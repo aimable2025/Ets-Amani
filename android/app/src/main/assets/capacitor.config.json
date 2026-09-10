@@ -1,0 +1,8 @@
+{
+	"appId": "com.amaniledger.app",
+	"appName": "AMANI Ledger",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	}
+}

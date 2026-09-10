@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ets Amani</string>
+    <string name="title_activity_main">Ets Amani</string>
+    <string name="package_name">com.amaniledger.app</string>
+    <string name="custom_url_scheme">com.amaniledger.app</string>
+</resources>
