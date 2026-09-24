@@ -1,0 +1,68 @@
+import {
+  Clock,
+  LogOut,
+  Phone,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+
+export default function ApprovalPendingPage() {
+  const { user, signOut, refreshUser } = useAuth();
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+      <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-8 ring-amber-50/50">
+          <Clock className="h-8 w-8" />
+        </div>
+
+        <h1 className="mt-6 text-xl font-bold text-slate-900">
+          Validation en attente
+        </h1>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          Votre compte (<strong>{user?.displayName}</strong>) a été enregistré avec succès. Pour des raisons réglementaires et de sécurité des opérations financières, l'activation finale doit être approuvée par la Direction ou l'Administrateur de votre agence.
+        </p>
+
+        <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-xs text-left space-y-2">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Rôle demandé :</span>
+            <span className="font-bold text-slate-800 uppercase">{user?.role}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Agence :</span>
+            <span className="font-bold text-slate-800">{user?.agencyId || 'Non assignée'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Statut :</span>
+            <span className="font-bold text-amber-600">En cours d'examen</span>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => refreshUser()}
+            className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-slate-800"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Vérifier à nouveau
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut()}
+            className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+          >
+            <LogOut className="h-4 w-4" />
+            Se déconnecter
+          </button>
+        </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-4 flex items-center justify-center gap-2 text-[11px] text-slate-400">
+          <Phone className="h-3.5 w-3.5" />
+          <span>Assistance Ets AMANI : +243 970 000 000</span>
+        </div>
+      </div>
+    </div>
+  );
+}

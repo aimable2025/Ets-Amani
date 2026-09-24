@@ -1,0 +1,6 @@
+{
+  "name": "Ets AMANI",
+  "description": "Application de gestion commerciale, stocks, ventes et facturation offline-first pour Ets AMANI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
