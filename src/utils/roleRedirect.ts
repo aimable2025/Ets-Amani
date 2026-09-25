@@ -1,11 +1,18 @@
 import type { AppUser } from '../types/auth';
 
-export function getDashboardRoute(
-  user: AppUser
-): string {
-  if (!user.isApproved) {
+/**
+ * Redirige l'utilisateur vers son tableau de bord selon son rôle et son état d'approbation.
+ */
+export function getDashboardRoute(user: AppUser | null): string {
+  if (!user) {
+    return '/login';
+  }
+
+  // Redirection immédiate si le compte n'est pas encore validé par la direction
+  if (!user.isApproved || user.status === 'pending' || user.registrationStatus === 'pending') {
     return '/validation-en-attente';
   }
+
   switch (user.role) {
     case 'administrateur_systeme':
       return '/dashboard/administrateur-systeme';
@@ -20,6 +27,6 @@ export function getDashboardRoute(
     case 'abonne':
       return '/dashboard/abonne';
     default:
-      return '/';
+      return '/login';
   }
 }

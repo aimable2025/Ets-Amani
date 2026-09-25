@@ -3,7 +3,7 @@ import {
   setDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db as firestoreDb } from '../lib/firebase';
+import { firestore } from '../lib/firebase';
 import {
   db,
   type LocalSmsOperation,
@@ -168,7 +168,7 @@ export async function syncSmsOperation(
   await markQueueProcessing(queueItem);
 
   try {
-    const firestoreRef = doc(firestoreDb, 'smsOperations', operation.id);
+    const firestoreRef = doc(firestore, 'smsOperations', operation.id);
     await setDoc(
       firestoreRef,
       {
@@ -336,7 +336,7 @@ export function startSmsSyncWorker(): () => void {
       await recoverStuckSmsQueue();
       await processSmsSyncQueue();
     } catch {
-      // Ignorer pour ne pas crasher
+      // Silencieux pour stabilité
     }
   };
 

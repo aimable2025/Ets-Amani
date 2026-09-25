@@ -9,25 +9,33 @@ export interface ResolvedInternalNumber {
   monitoringEnabled: boolean;
 }
 
+/**
+ * Extrait les 9 derniers chiffres significatifs d'un numéro de téléphone.
+ * Permet d'égaliser +243990000000, 0990000000 et 243990000000 sans erreur.
+ */
 function normalizePhoneNumber(phoneNumber: string): string {
-  return phoneNumber
-    .trim()
-    .replace(/[^\d+]/g, '')
-    .replace(/^00/, '+');
+  if (!phoneNumber) return '';
+  const digitsOnly = phoneNumber.replace(/[^\d]/g, '');
+  if (digitsOnly.length >= 9) {
+    return digitsOnly.slice(-9);
+  }
+  return digitsOnly;
 }
 
 export async function resolveInternalNumber(
   phoneNumber: string
 ): Promise<ResolvedInternalNumber | null> {
-  const normalized = normalizePhoneNumber(phoneNumber);
-  if (!normalized) {
+  if (!phoneNumber) return null;
+
+  const targetNormalized = normalizePhoneNumber(phoneNumber);
+  if (!targetNormalized) {
     return null;
   }
 
   const numbers = await db.internalNumbers.toArray();
   const match = numbers.find((item) => {
-    const localNumber = normalizePhoneNumber(item.phoneNumber);
-    return localNumber === normalized;
+    const localNormalized = normalizePhoneNumber(item.phoneNumber);
+    return localNormalized === targetNormalized;
   });
 
   if (!match) {

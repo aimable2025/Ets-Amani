@@ -19,10 +19,14 @@ import {
   isBilletageCoherent,
 } from '../types/billetage';
 
+/**
+ * Générateur d'identifiant unique universel robuste pour la production.
+ */
 function generateId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}_${crypto.randomUUID()}`;
+  }
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function assertValidQuantity(quantity: number): void {
@@ -42,7 +46,7 @@ function assertValidDenomination(denomination: number): void {
 
 function assertValidCurrency(currency: BilletageCurrency): void {
   if (currency !== 'USD' && currency !== 'CDF') {
-    throw new Error('Devise de billetage invalide.');
+    throw new Error('Devise de billetage invalide. Seules USD et CDF sont autorisées.');
   }
 }
 
@@ -127,11 +131,10 @@ export function createEmptyBilletageLines(
 async function toBilletageRecord(
   billetage: Billetage
 ): Promise<BilletageRecord> {
-  const denominationRows =
-    await db.billetageDenominations
-      .where('billetageId')
-      .equals(billetage.id)
-      .toArray();
+  const denominationRows = await db.billetageDenominations
+    .where('billetageId')
+    .equals(billetage.id)
+    .toArray();
 
   const lines: BilletageLine[] = denominationRows
     .sort((a, b) => {
@@ -141,7 +144,7 @@ async function toBilletageRecord(
       return b.denomination - a.denomination;
     })
     .map((row) => ({
-      denominationId: String(row.id ?? ''),
+      denominationId: String(row.id ?? row.denomination),
       currency: row.currency as BilletageCurrency,
       denomination: row.denomination,
       quantity: row.quantity,
@@ -170,7 +173,7 @@ async function toBilletageRecord(
 export async function createBilletage(
   input: CreateBilletageInput
 ): Promise<BilletageRecord> {
-  if (!input.userId.trim()) {
+  if (!input.userId || !input.userId.trim()) {
     throw new Error('L utilisateur du billetage est obligatoire.');
   }
   assertValidCurrency(input.currency);
@@ -192,8 +195,8 @@ export async function createBilletage(
   const billetage: Billetage = {
     id: generateId('billetage'),
     type: input.type,
-    userId: input.userId,
-    agencyId: input.agencyId ?? null,
+    userId: input.userId.trim(),
+    agencyId: input.agencyId ? input.agencyId.trim() : null,
     currency: input.currency,
     calculatedTotal,
     declaredAmount,
@@ -247,6 +250,7 @@ export async function createBilletage(
 export async function getBilletage(
   billetageId: string
 ): Promise<BilletageRecord | null> {
+  if (!billetageId || !billetageId.trim()) return null;
   const billetage = await db.billetages.get(billetageId);
   if (!billetage) {
     return null;
@@ -257,12 +261,12 @@ export async function getBilletage(
 export async function getOwnBilletages(
   userId: string
 ): Promise<BilletageRecord[]> {
-  if (!userId.trim()) {
+  if (!userId || !userId.trim()) {
     return [];
   }
   const records = await db.billetages
     .where('userId')
-    .equals(userId)
+    .equals(userId.trim())
     .reverse()
     .sortBy('updatedAt');
   return Promise.all(records.map(toBilletageRecord));
@@ -271,12 +275,12 @@ export async function getOwnBilletages(
 export async function getAgencyBilletages(
   agencyId: string
 ): Promise<BilletageRecord[]> {
-  if (!agencyId.trim()) {
+  if (!agencyId || !agencyId.trim()) {
     return [];
   }
   const records = await db.billetages
     .where('agencyId')
-    .equals(agencyId)
+    .equals(agencyId.trim())
     .reverse()
     .sortBy('updatedAt');
   return Promise.all(records.map(toBilletageRecord));
@@ -335,6 +339,7 @@ export async function updateBilletage(
           updatedAt: now,
         }))
       );
+
       if (existing.type === 'business') {
         await enqueueSync(billetageId, 'update', now);
       }

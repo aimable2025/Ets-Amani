@@ -20,10 +20,8 @@ import {
   type PendingUserProfileInput,
 } from '../services/UserProfileService';
 import type {
-  AccountStatus,
   AppUser,
   PublicRegistrationRole,
-  UserCategory,
   UserRole,
 } from '../types/auth';
 
@@ -94,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (fbUser) {
             try {
               const profile = await getUserProfile(fbUser.uid);
-              if (profile) {
+              if (profile && isMounted) {
                 setUser(profile);
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
               }
@@ -102,10 +100,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.warn('[Ets AMANI] Erreur chargement profil Firestore :', err);
             }
           }
-          setIsLoading(false);
+          if (isMounted) {
+            setIsLoading(false);
+          }
         });
       } else {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -140,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           throw new Error('Profil utilisateur introuvable dans la base Firestore.');
-        } catch (err: any) {
+        } catch (err: unknown) {
           if (!navigator.onLine) {
             // Vérification de session hors-ligne précédemment validée
             const cached = localStorage.getItem(STORAGE_KEY);
@@ -153,7 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
             throw new Error('Connexion réseau requise pour valider votre session.');
           }
-          throw new Error(err?.message || 'Identifiants incorrects.');
+          const errorMessage = err instanceof Error ? err.message : 'Identifiants incorrects.';
+          throw new Error(errorMessage);
         }
       } else {
         // Mode hors-ligne strict : vérification du cache de session local
@@ -203,9 +206,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           uid = cred.user.uid;
           // Déconnexion immédiate : aucune session active créée après soumission
           await firebaseSignOut(auth);
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.warn('[Ets AMANI] Erreur création compte Auth :', err);
-          throw new Error(err?.message || 'Impossible de créer le compte utilisateur.');
+          const msg = err instanceof Error ? err.message : 'Impossible de créer le compte utilisateur.';
+          throw new Error(msg);
         }
       }
 
@@ -232,9 +236,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         await createPendingUserProfile(uid, pendingData);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn('[Ets AMANI] Erreur écriture Firestore profil en attente :', err);
-        throw new Error(err?.message || 'Erreur lors de l enregistrement de la demande.');
+        const msg = err instanceof Error ? err.message : 'Erreur lors de l enregistrement de la demande.';
+        throw new Error(msg);
       }
 
       // RÈGLE ABSOLUE : Aucune connexion automatique ni stockage de session
@@ -266,13 +271,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AuthContextValue>(() => {
     const role = user?.role || null;
-    const canAccessProtectedModules = !!user && user.status === 'active' && user.isApproved;
+    
+    // Un utilisateur a accès s'il est approuvé ET son statut est 'active' ou 'approved'
+    const canAccessProtectedModules =
+      !!user &&
+      user.isApproved &&
+      (user.status === 'active' || user.status === 'approved');
+
     const hasPermission = (permission: string) => {
       if (!user) return false;
       if (user.role === 'administrateur_systeme' || user.role === 'directeur_general') return true;
       if (user.permissions?.includes('*') || user.permissions?.includes(permission)) return true;
       return false;
     };
+
     return {
       user,
       firebaseUser,

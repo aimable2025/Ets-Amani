@@ -5,21 +5,21 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/db';
-import { db as firestoreDb, isFirebaseConfigured } from '../lib/firebase';
+import { firestore, isFirebaseConfigured } from '../lib/firebase';
 import type { SyncQueueItem } from '../lib/db';
 
 const SYNC_INTERVAL_MS = 10000;
 const MAX_ATTEMPTS = 5;
 
 let isSyncing = false;
-let syncIntervalId: any = null;
+let syncIntervalId: ReturnType<typeof setInterval> | null = null;
 
 async function syncSingleItem(item: SyncQueueItem): Promise<void> {
   const { entity, entityId, operation } = item;
 
   if (entity === 'billetage') {
     if (operation === 'delete') {
-      const docRef = doc(firestoreDb, 'billetages', entityId);
+      const docRef = doc(firestore, 'billetages', entityId);
       await deleteDoc(docRef);
     } else {
       const billetage = await db.billetages.get(entityId);
@@ -31,7 +31,7 @@ async function syncSingleItem(item: SyncQueueItem): Promise<void> {
         .equals(entityId)
         .toArray();
 
-      const docRef = doc(firestoreDb, 'billetages', entityId);
+      const docRef = doc(firestore, 'billetages', entityId);
       await setDoc(
         docRef,
         {
@@ -50,14 +50,14 @@ async function syncSingleItem(item: SyncQueueItem): Promise<void> {
     }
   } else if (entity === 'operation') {
     if (operation === 'delete') {
-      const docRef = doc(firestoreDb, 'operations', entityId);
+      const docRef = doc(firestore, 'operations', entityId);
       await deleteDoc(docRef);
     } else {
       const op = await db.operations.get(entityId);
       if (!op) {
         return;
       }
-      const docRef = doc(firestoreDb, 'operations', entityId);
+      const docRef = doc(firestore, 'operations', entityId);
       await setDoc(
         docRef,
         {
@@ -75,14 +75,14 @@ async function syncSingleItem(item: SyncQueueItem): Promise<void> {
     }
   } else if (entity === 'operationAssignment') {
     if (operation === 'delete') {
-      const docRef = doc(firestoreDb, 'operationAssignments', entityId);
+      const docRef = doc(firestore, 'operationAssignments', entityId);
       await deleteDoc(docRef);
     } else {
       const assignment = await db.operationAssignments.get(entityId);
       if (!assignment) {
         return;
       }
-      const docRef = doc(firestoreDb, 'operationAssignments', entityId);
+      const docRef = doc(firestore, 'operationAssignments', entityId);
       await setDoc(
         docRef,
         {
@@ -146,15 +146,16 @@ export async function processSyncQueue(): Promise<{
           updatedAt: Date.now(),
         });
         processed++;
-      } catch (err: any) {
+      } catch (err: unknown) {
         errors++;
         const nextAttempts = (item.attempts || 0) + 1;
         const willFail = nextAttempts >= MAX_ATTEMPTS;
+        const msg = err instanceof Error ? err.message : 'Erreur inconnue lors de la synchronisation';
 
         await db.syncQueue.update(item.id, {
           status: willFail ? 'failed' : 'pending',
           attempts: nextAttempts,
-          lastError: err?.message || 'Erreur inconnue lors de la synchronisation',
+          lastError: msg,
           updatedAt: Date.now(),
         });
       }
@@ -178,7 +179,6 @@ export function startSyncWorker(): () => void {
     };
   }
 
-  // Lancement immédiat
   void processSyncQueue();
 
   const handleOnline = () => {

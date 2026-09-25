@@ -1,29 +1,51 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-
-export const isFirebaseConfigured = Boolean(
-  import.meta.env.VITE_FIREBASE_API_KEY &&
-  import.meta.env.VITE_FIREBASE_PROJECT_ID
-);
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyMockKeyForDevEnvironmentSafety123',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'ets-amani.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'ets-amani-app',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'ets-amani-app.appspot.com',
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY ||
+    'AIzaSyCte0umcFfJNPBdzlT0MbXwDFaEruRv9lI',
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    'ets-amani.firebaseapp.com',
+  projectId:
+    import.meta.env.VITE_FIREBASE_PROJECT_ID ||
+    'ets-amani',
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    'ets-amani.firebasestorage.app',
   messagingSenderId:
-    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '123456789012',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:123456789012:web:mockdev123456',
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ||
+    '697171148070',
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID ||
+    '1:697171148070:web:bd1150821e623991ad55e7',
 };
 
-const app = initializeApp(firebaseConfig);
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey && firebaseConfig.projectId
+);
+
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
-export const firestore = getFirestore(app);
+
+export const firestore = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
 
 /**
- * Alias de compatibilité pour les services existants.
+ * Aliases de compatibilité pour Firestore (modules UI et services)
  */
+export const firestoreDb = firestore;
 export const db = firestore;
 
 export default app;

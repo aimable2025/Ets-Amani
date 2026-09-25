@@ -1,23 +1,35 @@
-import {
-  collection,
-  getDocs,
-} from 'firebase/firestore';
-import { auth, db as firestoreDb } from '../lib/firebase';
-import {
-  db,
-  type LocalInternalNumber,
-} from '../lib/db';
+import { collection, getDocs, Timestamp } from 'firebase/firestore';
+import { auth, firestore } from '../lib/firebase';
+import { db, type LocalInternalNumber } from '../lib/db';
 
 /**
- * Synchronise les numéros internes Firestore vers Dexie.
+ * Convertit un champ Timestamp Firestore ou Date en timestamp Unix (ms).
+ */
+function toMillis(value: unknown): number {
+  if (value instanceof Timestamp) {
+    return value.toMillis();
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (value && typeof (value as { toMillis?: () => number }).toMillis === 'function') {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return Date.now();
+}
+
+/**
+ * Synchronise les numéros internes de Firestore vers la base locale IndexedDB (Dexie).
+ * Permet un fonctionnement 100% Offline-First pour la résolution des numéros SMS.
  */
 export async function syncInternalNumbers(): Promise<void> {
-  if (!auth.currentUser) {
+  // Exécution si l'utilisateur est authentifié ou si une session locale existe
+  if (!auth.currentUser && !localStorage.getItem('ets_amani_session_user')) {
     return;
   }
 
   try {
-    const snapshot = await getDocs(collection(firestoreDb, 'internalNumbers'));
+    const snapshot = await getDocs(collection(firestore, 'internalNumbers'));
     const firestoreIds = new Set<string>();
 
     for (const document of snapshot.docs) {
@@ -34,17 +46,21 @@ export async function syncInternalNumbers(): Promise<void> {
         status: data.status ?? 'active',
         monitoringEnabled: data.monitoringEnabled === true,
         createdBy: data.createdBy ?? '',
-        createdAt: data.createdAt ?? Date.now(),
-        updatedAt: data.updatedAt ?? Date.now(),
+        createdAt: toMillis(data.createdAt),
+        updatedAt: toMillis(data.updatedAt),
       };
+
       firestoreIds.add(document.id);
       await db.internalNumbers.put(internalNumber);
     }
 
-    const localNumbers = await db.internalNumbers.toArray();
-    for (const local of localNumbers) {
-      if (!firestoreIds.has(local.id) && snapshot.docs.length > 0) {
-        await db.internalNumbers.delete(local.id);
+    // Purge des enregistrements locaux supprimés côté serveur (uniquement si le snapshot est valide)
+    if (!snapshot.empty) {
+      const localNumbers = await db.internalNumbers.toArray();
+      for (const local of localNumbers) {
+        if (!firestoreIds.has(local.id)) {
+          await db.internalNumbers.delete(local.id);
+        }
       }
     }
   } catch (error: unknown) {

@@ -9,6 +9,9 @@ import type {
 
 const OPERATION_PREFIX = 'OP';
 
+/**
+ * Générateur de numéro d'opération unique et lisible pour la gestion opérationnelle.
+ */
 function generateOperationNumber(): string {
   const now = new Date();
   const date = [
@@ -21,27 +24,53 @@ function generateOperationNumber(): string {
     String(now.getMinutes()).padStart(2, '0'),
     String(now.getSeconds()).padStart(2, '0'),
   ].join('');
-  const random = Math.random()
-    .toString(36)
-    .slice(2, 7)
-    .toUpperCase();
-  return `${OPERATION_PREFIX}-${date}-${time}-${random}`;
+
+  let entropy = '';
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    entropy = crypto.randomUUID().slice(0, 5).toUpperCase();
+  } else {
+    entropy = Math.random().toString(36).slice(2, 7).toUpperCase();
+  }
+
+  return `${OPERATION_PREFIX}-${date}-${time}-${entropy}`;
 }
 
+/**
+ * Générateur d'identifiant unique universel robuste.
+ */
 function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Empile ou met à jour un élément dans la file de synchronisation Offline-First.
+ */
 async function enqueueOperationSync(
   entity: 'operation' | 'operationAssignment',
   entityId: string,
   operation: 'create' | 'update' | 'delete',
 ): Promise<void> {
   const now = Date.now();
+
+  const existing = await db.syncQueue
+    .where({ entity, entityId })
+    .first();
+
+  if (existing?.id !== undefined) {
+    await db.syncQueue.update(existing.id, {
+      operation,
+      status: 'pending',
+      lastError: null,
+      updatedAt: now,
+    });
+    return;
+  }
+
   await db.syncQueue.add({
-    entity: entity as 'operation' | 'operationAssignment',
+    entity,
     entityId,
     operation,
     attempts: 0,
@@ -56,13 +85,14 @@ export async function createOperation(
   input: CreateOperationInput,
 ): Promise<Operation> {
   const now = Date.now();
-  if (!input.title.trim()) {
+
+  if (!input.title || !input.title.trim()) {
     throw new Error('Le titre de l opération est obligatoire.');
   }
-  if (!input.agencyId.trim()) {
+  if (!input.agencyId || !input.agencyId.trim()) {
     throw new Error('Une agence doit être sélectionnée.');
   }
-  if (input.assignedAgentIds.length === 0) {
+  if (!input.assignedAgentIds || input.assignedAgentIds.length === 0) {
     throw new Error('Au moins un agent doit être sélectionné.');
   }
 
@@ -71,11 +101,11 @@ export async function createOperation(
     operationNumber: generateOperationNumber(),
     type: input.type,
     title: input.title.trim(),
-    description: input.description.trim(),
+    description: input.description ? input.description.trim() : '',
     priority: input.priority,
     status: 'cree',
     agencyId: input.agencyId.trim(),
-    agencyName: input.agencyName.trim(),
+    agencyName: input.agencyName ? input.agencyName.trim() : 'Agence',
     assignedAgentIds: [...input.assignedAgentIds],
     assignedAgentNames: [...input.assignedAgentNames],
     createdBy: input.createdBy,
@@ -100,13 +130,11 @@ export async function createOperation(
     db.syncQueue,
     async () => {
       await db.operations.put(operation);
-      for (
-        let index = 0;
-        index < input.assignedAgentIds.length;
-        index += 1
-      ) {
+
+      for (let index = 0; index < input.assignedAgentIds.length; index += 1) {
         const agentId = input.assignedAgentIds[index];
         const agentName = input.assignedAgentNames[index] || 'Agent';
+
         const assignment: OperationAssignment = {
           id: generateId('assignment'),
           operationId: operation.id,
@@ -122,13 +150,11 @@ export async function createOperation(
           updatedAt: now,
           syncStatus: 'pending',
         };
+
         await db.operationAssignments.put(assignment);
-        await enqueueOperationSync(
-          'operationAssignment',
-          assignment.id,
-          'create',
-        );
+        await enqueueOperationSync('operationAssignment', assignment.id, 'create');
       }
+
       await enqueueOperationSync('operation', operation.id, 'create');
     },
   );
@@ -139,15 +165,17 @@ export async function createOperation(
 export async function getOperation(
   id: string,
 ): Promise<Operation | undefined> {
-  return db.operations.get(id);
+  if (!id || !id.trim()) return undefined;
+  return db.operations.get(id.trim());
 }
 
 export async function getOperationsByAgency(
   agencyId: string,
 ): Promise<Operation[]> {
+  if (!agencyId || !agencyId.trim()) return [];
   return db.operations
     .where('agencyId')
-    .equals(agencyId)
+    .equals(agencyId.trim())
     .reverse()
     .sortBy('createdAt');
 }
@@ -181,6 +209,7 @@ export async function updateOperationStatus(
     updatedAt: now,
     syncStatus: 'pending',
   };
+
   if (status === 'termine') {
     changes.completedAt = now;
   }
@@ -188,8 +217,10 @@ export async function updateOperationStatus(
     changes.closedAt = now;
   }
 
-  await db.operations.update(id, changes);
-  await enqueueOperationSync('operation', id, 'update');
+  await db.transaction('rw', db.operations, db.syncQueue, async () => {
+    await db.operations.update(id, changes);
+    await enqueueOperationSync('operation', id, 'update');
+  });
 }
 
 export async function updateOperationAssignment(
@@ -230,25 +261,57 @@ export async function updateOperationAssignment(
     changes.progress = 100;
   }
 
-  await db.operationAssignments.update(assignmentId, changes);
-  await enqueueOperationSync('operationAssignment', assignmentId, 'update');
+  await db.transaction(
+    'rw',
+    db.operations,
+    db.operationAssignments,
+    db.syncQueue,
+    async () => {
+      await db.operationAssignments.update(assignmentId, changes);
+      await enqueueOperationSync('operationAssignment', assignmentId, 'update');
+
+      // Vérification : Si toutes les affectations de l'opération sont terminées, passer l'opération en status 'termine'
+      if (status === 'terminee') {
+        const siblingAssignments = await db.operationAssignments
+          .where('operationId')
+          .equals(assignment.operationId)
+          .toArray();
+
+        const allCompleted = siblingAssignments.every(
+          (item) => item.id === assignmentId || item.status === 'terminee',
+        );
+
+        if (allCompleted) {
+          await db.operations.update(assignment.operationId, {
+            status: 'termine',
+            completedAt: now,
+            updatedAt: now,
+            syncStatus: 'pending',
+          });
+          await enqueueOperationSync('operation', assignment.operationId, 'update');
+        }
+      }
+    },
+  );
 }
 
 export async function getOperationAssignments(
   operationId: string,
 ): Promise<OperationAssignment[]> {
+  if (!operationId || !operationId.trim()) return [];
   return db.operationAssignments
     .where('operationId')
-    .equals(operationId)
+    .equals(operationId.trim())
     .toArray();
 }
 
 export async function getAgentAssignments(
   agentId: string,
 ): Promise<OperationAssignment[]> {
+  if (!agentId || !agentId.trim()) return [];
   return db.operationAssignments
     .where('agentId')
-    .equals(agentId)
+    .equals(agentId.trim())
     .reverse()
     .sortBy('createdAt');
 }

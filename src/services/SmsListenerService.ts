@@ -15,6 +15,13 @@ import {
 
 let listenerHandle: PluginListenerHandle | null = null;
 
+function generateSmsId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `sms_${crypto.randomUUID()}`;
+  }
+  return `sms_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
 async function processSms(
   event: SmsReceivedEvent | PendingSmsItem
 ): Promise<void> {
@@ -53,7 +60,7 @@ async function processSms(
 
     const now = Date.now();
     await saveSmsOperationLocally({
-      id: `sms_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: generateSmsId(),
       internalNumberId: internalNumber.internalNumberId,
       agencyId: internalNumber.agencyId,
       operator: internalNumber.operator,

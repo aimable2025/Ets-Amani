@@ -20,25 +20,45 @@ import AbonneDashboard from './pages/dashboard/AbonneDashboard';
 import { startSyncWorker } from './services/SyncWorker';
 import { startSmsSyncWorker } from './services/SmsOperationService';
 
+// Redirection intelligente pour la racine
 function HomeRedirect() {
   const { isAuthenticated, user, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
-          <p className="text-sm font-semibold text-slate-700">Initialisation d'Ets AMANI...</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm text-slate-400">Initialisation d'Ets AMANI...</p>
         </div>
       </div>
     );
   }
 
   if (isAuthenticated && user) {
-    return <Navigate to={getDashboardRoute(user)} replace />;
+    if (!user.isApproved) {
+      return <Navigate to="/validation-en-attente" replace />;
+    }
+    return <Navigate to={getDashboardRoute(user.role)} replace />;
   }
 
-  return <LoginPage />;
+  return <Navigate to="/login" replace />;
+}
+
+// Composant pour empêcher un utilisateur connecté d'accéder aux pages /login ou /register
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user, isLoading } = useAuth();
+
+  if (isLoading) return null;
+
+  if (isAuthenticated && user) {
+    if (!user.isApproved) {
+      return <Navigate to="/validation-en-attente" replace />;
+    }
+    return <Navigate to={getDashboardRoute(user.role)} replace />;
+  }
+
+  return <>{children}</>;
 }
 
 function AppRoutes() {
@@ -55,15 +75,35 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Route Racine */}
       <Route path="/" element={<HomeRedirect />} />
-      <Route path="/register" element={<RegisterPage />} />
+
+      {/* Routes Publiques (uniquement si NON connecté) */}
+      <Route
+        path="/login"
+        element={
+          <PublicOnlyRoute>
+            <LoginPage />
+          </PublicOnlyRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <PublicOnlyRoute>
+            <RegisterPage />
+          </PublicOnlyRoute>
+        }
+      />
+
+      {/* Route de validation en attente */}
       <Route path="/validation-en-attente" element={<ApprovalPendingPage />} />
 
-      {/* Rôles & Tableaux de bord */}
+      {/* Rôles & Tableaux de bord avec contrôles RBAC stricts */}
       <Route
         path="/dashboard/administrateur-systeme"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['administrateur_systeme']}>
             <AdministrateurSystemeDashboard />
           </ProtectedRoute>
         }
@@ -71,7 +111,7 @@ function AppRoutes() {
       <Route
         path="/dashboard/directeur-general"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['directeur_general']}>
             <DirecteurGeneralDashboard />
           </ProtectedRoute>
         }
@@ -79,7 +119,7 @@ function AppRoutes() {
       <Route
         path="/dashboard/administrateur-agence"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['administrateur_agence']}>
             <AdministrateurAgenceDashboard />
           </ProtectedRoute>
         }
@@ -87,7 +127,7 @@ function AppRoutes() {
       <Route
         path="/dashboard/agent"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['agent']}>
             <AgentDashboard />
           </ProtectedRoute>
         }
@@ -95,7 +135,7 @@ function AppRoutes() {
       <Route
         path="/dashboard/client"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['client']}>
             <ClientDashboard />
           </ProtectedRoute>
         }
@@ -103,12 +143,13 @@ function AppRoutes() {
       <Route
         path="/dashboard/abonne"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['abonne']}>
             <AbonneDashboard />
           </ProtectedRoute>
         }
       />
 
+      {/* Catch-all pour les URL inconnues */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
