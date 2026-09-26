@@ -1,55 +1,50 @@
+import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { UserRole } from '../../types/auth';
+import type { UserRole } from '../../types/auth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: UserRole[];
 }
 
-export default function ProtectedRoute({
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   allowedRoles,
-}: ProtectedRouteProps) {
-  const {
-    isLoading,
-    isAuthenticated,
-    user,
-    canAccessProtectedModules,
-  } = useAuth();
+}) => {
+  const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
-  // 1. En cours de chargement
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
         <div className="flex flex-col items-center space-y-4">
-          <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-sm text-slate-400">Vérification de votre session...</p>
+          <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm text-slate-400">Vérification des accès...</p>
         </div>
       </div>
     );
   }
 
-  // 2. Non authentifié -> Redirection Login
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // 3. Compte en attente d'approbation
-  if (!user.isApproved) {
+  // L'Administrateur Système et le Directeur Général sont des autorités d'office
+  const isPrivilegedRole =
+    user.role === 'administrateur_systeme' || user.role === 'directeur_general';
+
+  // Si le compte n'est pas approuvé ET n'est pas un rôle d'autorité
+  if (!user.isApproved && !isPrivilegedRole) {
     return <Navigate to="/validation-en-attente" replace />;
   }
 
-  // 4. Inéligible aux modules protégés
-  if (!canAccessProtectedModules) {
-    return <Navigate to="/validation-en-attente" replace />;
-  }
-
-  // 5. Validation stricte du rôle (RBAC par route)
-  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+  // Vérification de la permission de rôle sur la route
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return <Navigate to="/unauthorized" replace />;
   }
 
   return <>{children}</>;
-}
+};
+
+export default ProtectedRoute;

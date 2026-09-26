@@ -18,5 +18,27 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     emptyOutDir: true,
+    target: 'esnext',
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('firebase')) {
+              return 'vendor-firebase';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('dexie')) {
+              return 'vendor-db';
+            }
+            if (id.includes('react-router')) {
+              return 'vendor-router';
+            }
+          }
+        },
+      },
+    },
   },
 });

@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import {
-  getFirestore,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
@@ -32,10 +31,13 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey && firebaseConfig.projectId
 );
 
+// Initialisation unique du singleton Firebase App
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
+// Service d'Authentification Firebase
 export const auth = getAuth(app);
 
+// Service Firestore avec persistance locale IndexedDB multi-onglets active
 export const firestore = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
@@ -43,7 +45,7 @@ export const firestore = initializeFirestore(app, {
 });
 
 /**
- * Aliases de compatibilité pour Firestore (modules UI et services)
+ * Aliases de compatibilité pour Firestore (modules UI, services métiers et workers)
  */
 export const firestoreDb = firestore;
 export const db = firestore;

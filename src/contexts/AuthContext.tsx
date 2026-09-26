@@ -63,22 +63,49 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const STORAGE_KEY = 'ets_amani_session_user';
 
+// Helper interne pour normaliser les rôles et permissions
+const normalizeUserPermissions = (rawUser: AppUser): AppUser => {
+  const normalizedRole = rawUser.role ? rawUser.role.trim().toLowerCase() : '';
+  const isPrivileged =
+    normalizedRole === 'administrateur_systeme' || normalizedRole === 'directeur_general';
+
+  if (isPrivileged) {
+    return {
+      ...rawUser,
+      role: normalizedRole as UserRole,
+      isApproved: true,
+      status: 'active',
+      registrationStatus: 'approved',
+    };
+  }
+
+  return {
+    ...rawUser,
+    role: normalizedRole as UserRole,
+  };
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initialisation à partir du cache local ou de Firebase Auth
+  // Initialisation ultra-rapide via la session locale, puis mise à jour réseau
   useEffect(() => {
     let isMounted = true;
 
     const restoreSession = async () => {
+      let hasLocalSession = false;
+
       try {
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
           const parsed = JSON.parse(cached) as AppUser;
           if (isMounted) {
-            setUser(parsed);
+            setUser(normalizeUserPermissions(parsed));
+            hasLocalSession = true;
+            // Déblocage immédiat de l'UI si on a un utilisateur en cache
+            setIsLoading(false);
           }
         }
       } catch {
@@ -93,21 +120,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               const profile = await getUserProfile(fbUser.uid);
               if (profile && isMounted) {
-                setUser(profile);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+                const normalized = normalizeUserPermissions(profile);
+                setUser(normalized);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
               }
             } catch (err) {
               console.warn('[Ets AMANI] Erreur chargement profil Firestore :', err);
             }
+          } else if (isMounted) {
+            setUser(null);
+            localStorage.removeItem(STORAGE_KEY);
           }
-          if (isMounted) {
+
+          if (isMounted && !hasLocalSession) {
             setIsLoading(false);
           }
         });
-      } else {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      } else if (isMounted && !hasLocalSession) {
+        setIsLoading(false);
       }
     };
 
@@ -126,7 +156,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Veuillez renseigner votre email et votre mot de passe.');
       }
 
-      // Authentification Firebase Auth
       if (isFirebaseConfigured && auth) {
         try {
           const userCredential = await signInWithEmailAndPassword(
@@ -137,19 +166,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setFirebaseUser(userCredential.user);
           const profile = await getUserProfile(userCredential.user.uid);
           if (profile) {
-            setUser(profile);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+            const normalized = normalizeUserPermissions(profile);
+            setUser(normalized);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
             return;
           }
           throw new Error('Profil utilisateur introuvable dans la base Firestore.');
         } catch (err: unknown) {
           if (!navigator.onLine) {
-            // Vérification de session hors-ligne précédemment validée
             const cached = localStorage.getItem(STORAGE_KEY);
             if (cached) {
               const parsed = JSON.parse(cached) as AppUser;
               if (parsed.email?.toLowerCase() === normalizedEmail) {
-                setUser(parsed);
+                setUser(normalizeUserPermissions(parsed));
                 return;
               }
             }
@@ -159,12 +188,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           throw new Error(errorMessage);
         }
       } else {
-        // Mode hors-ligne strict : vérification du cache de session local
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
           const parsed = JSON.parse(cached) as AppUser;
           if (parsed.email?.toLowerCase() === normalizedEmail) {
-            setUser(parsed);
+            setUser(normalizeUserPermissions(parsed));
             return;
           }
         }
@@ -204,7 +232,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             input.password
           );
           uid = cred.user.uid;
-          // Déconnexion immédiate : aucune session active créée après soumission
           await firebaseSignOut(auth);
         } catch (err: unknown) {
           console.warn('[Ets AMANI] Erreur création compte Auth :', err);
@@ -242,7 +269,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(msg);
       }
 
-      // RÈGLE ABSOLUE : Aucune connexion automatique ni stockage de session
       setUser(null);
       setFirebaseUser(null);
       try {
@@ -260,8 +286,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const fresh = await getUserProfile(user.uid);
         if (fresh) {
-          setUser(fresh);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+          const normalized = normalizeUserPermissions(fresh);
+          setUser(normalized);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
         }
       } catch {
         // ignore
@@ -270,17 +297,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const value = useMemo<AuthContextValue>(() => {
-    const role = user?.role || null;
-    
-    // Un utilisateur a accès s'il est approuvé ET son statut est 'active' ou 'approved'
+    const rawRole = user?.role || '';
+    const normalizedRole = rawRole.trim().toLowerCase();
+    const isPrivileged = normalizedRole === 'administrateur_systeme' || normalizedRole === 'directeur_general';
+
     const canAccessProtectedModules =
       !!user &&
-      user.isApproved &&
-      (user.status === 'active' || user.status === 'approved');
+      (isPrivileged ||
+        (user.isApproved && (user.status === 'active' || user.status === 'approved')));
 
     const hasPermission = (permission: string) => {
       if (!user) return false;
-      if (user.role === 'administrateur_systeme' || user.role === 'directeur_general') return true;
+      if (isPrivileged) return true;
       if (user.permissions?.includes('*') || user.permissions?.includes(permission)) return true;
       return false;
     };
@@ -290,13 +318,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firebaseUser,
       isAuthenticated: !!user,
       isLoading,
-      role,
-      isAdministrateurSysteme: role === 'administrateur_systeme',
-      isDirecteurGeneral: role === 'directeur_general',
-      isAdministrateurAgence: role === 'administrateur_agence',
-      isAgent: role === 'agent',
-      isClient: role === 'client',
-      isAbonne: role === 'abonne',
+      role: normalizedRole as UserRole,
+      isAdministrateurSysteme: normalizedRole === 'administrateur_systeme',
+      isDirecteurGeneral: normalizedRole === 'directeur_general',
+      isAdministrateurAgence: normalizedRole === 'administrateur_agence',
+      isAgent: normalizedRole === 'agent',
+      isClient: normalizedRole === 'client',
+      isAbonne: normalizedRole === 'abonne',
       canAccessProtectedModules,
       hasPermission,
       signIn,
