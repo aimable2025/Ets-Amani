@@ -4,6 +4,7 @@ import {
   Bell,
   Building2,
   Calculator,
+  Coins,
   FileText,
   LayoutDashboard,
   MessageSquare,
@@ -82,16 +83,29 @@ export default function Sidebar({
   const managementNavigation: NavigationItem[] =
     role === 'directeur_general'
       ? [
-          { id: 'reports', label: "Journal d'Audit", icon: FileText },
-          { id: 'accounting', label: 'Trésorerie & Billetage', icon: Calculator },
+          { id: 'salaries', label: 'Salaires & Avances', icon: Coins, badge: 'Paie DG' },
+          { id: 'reports', label: 'Rapports & Exports', icon: FileText, badge: 'PDF/XLS' },
+          { id: 'accounting', label: 'Transferts & Dettes', icon: Calculator },
           { id: 'commissions', label: 'Missions Réseau', icon: BarChart3 },
-          { id: 'chat', label: 'Numéros Flotte & SMS', icon: MessageSquare },
+          { id: 'chat', label: 'Chat Interne & IA', icon: MessageSquare },
         ]
-      : role === 'administrateur_systeme'
+      : role === 'administrateur_agence'
         ? [
-            { id: 'reports', label: "Journal d'Audit", icon: FileText },
+            { id: 'salaries', label: 'Salaires & Guichet Payeur', icon: Coins, badge: 'Paie' },
+            { id: 'reports', label: "Rapports d'Agence", icon: FileText, badge: 'PDF/XLS' },
+            { id: 'accounting', label: 'Transferts & Dettes', icon: Calculator },
+            { id: 'chat', label: 'Chat Interne & IA', icon: MessageSquare },
           ]
-        : [];
+        : role === 'administrateur_systeme'
+          ? [
+              { id: 'reports', label: "Journal d'Audit", icon: FileText },
+            ]
+          : role === 'agent'
+            ? [
+                { id: 'salaries', label: 'Mon Salaire & Avances', icon: Coins, badge: 'Paie' },
+                { id: 'chat', label: 'Chat Interne & Annonces', icon: MessageSquare },
+              ]
+            : [];
 
   const systemNavigation: NavigationItem[] = isPrivilegedOrAgency
     ? [

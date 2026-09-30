@@ -10,7 +10,18 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/db';
 import { firestore, isFirebaseConfigured } from '../lib/firebase';
-import type { SyncQueueItem, Billetage } from '../lib/db';
+import type {
+  SyncQueueItem,
+  Billetage,
+  LocalReport,
+  LocalChatMessage,
+  LocalBroadcast,
+  LocalDebt,
+  LocalInterAgencyTransfer,
+  LocalSalaryRecord,
+  LocalSalaryClaim,
+  LocalSalaryAdvance,
+} from '../lib/db';
 import type { Operation, OperationAssignment } from '../types/operation';
 
 const SYNC_INTERVAL_MS = 10000;
@@ -87,6 +98,170 @@ async function pullRemoteDataToLocal(): Promise<void> {
           updatedAt: Number(raw.updatedAt || Date.now()),
         };
         await db.billetages.put(billetageRow);
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 4. Hydratation descendante des rapports (reports)
+  try {
+    const repSnap = await getDocs(query(collection(firestore, 'reports'), limit(150)));
+    for (const docSnap of repSnap.docs) {
+      const remoteData = docSnap.data() as LocalReport;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.reports.get(id);
+      if (!localExisting || localExisting.syncStatus !== 'pending') {
+        await db.reports.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 5. Hydratation descendante des messages du chat (messages)
+  try {
+    const msgSnap = await getDocs(query(collection(firestore, 'messages'), limit(200)));
+    for (const docSnap of msgSnap.docs) {
+      const remoteData = docSnap.data() as LocalChatMessage;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.chatMessages.get(id);
+      if (!localExisting || localExisting.syncStatus !== 'pending') {
+        await db.chatMessages.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 6. Hydratation descendante des diffusions / annonces (notifications)
+  try {
+    const notifSnap = await getDocs(query(collection(firestore, 'notifications'), limit(100)));
+    for (const docSnap of notifSnap.docs) {
+      const remoteData = docSnap.data() as LocalBroadcast;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.broadcasts.get(id);
+      if (!localExisting || localExisting.syncStatus !== 'pending') {
+        await db.broadcasts.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 7. Hydratation descendante des dettes (debts)
+  try {
+    const debtSnap = await getDocs(query(collection(firestore, 'debts'), limit(150)));
+    for (const docSnap of debtSnap.docs) {
+      const remoteData = docSnap.data() as LocalDebt;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.debts.get(id);
+      if (!localExisting || localExisting.syncStatus !== 'pending') {
+        await db.debts.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 8. Hydratation descendante des transferts inter-agences (interAgencyTransfers)
+  try {
+    const trfSnap = await getDocs(query(collection(firestore, 'interAgencyTransfers'), limit(150)));
+    for (const docSnap of trfSnap.docs) {
+      const remoteData = docSnap.data() as LocalInterAgencyTransfer;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.interAgencyTransfers.get(id);
+      if (!localExisting || localExisting.syncStatus !== 'pending') {
+        await db.interAgencyTransfers.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 9. Hydratation descendante des salaires (salaries) avec préservation des décisions DG plus récentes
+  try {
+    const salSnap = await getDocs(query(collection(firestore, 'salaries'), limit(250)));
+    for (const docSnap of salSnap.docs) {
+      const remoteData = docSnap.data() as LocalSalaryRecord;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.salaries.get(id);
+      if (
+        !localExisting ||
+        localExisting.syncStatus !== 'pending' ||
+        (remoteData.updatedAt && remoteData.updatedAt > localExisting.updatedAt)
+      ) {
+        await db.salaries.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 10. Hydratation descendante des réclamations salariales (salaryClaims)
+  try {
+    const clmSnap = await getDocs(query(collection(firestore, 'salaryClaims'), limit(150)));
+    for (const docSnap of clmSnap.docs) {
+      const remoteData = docSnap.data() as LocalSalaryClaim;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.salaryClaims.get(id);
+      if (
+        !localExisting ||
+        localExisting.syncStatus !== 'pending' ||
+        (remoteData.updatedAt && remoteData.updatedAt > localExisting.updatedAt)
+      ) {
+        await db.salaryClaims.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
+      }
+    }
+  } catch {
+    // Silencieux
+  }
+
+  // 11. Hydratation descendante des demandes d'avance sur salaire (salaryAdvances)
+  try {
+    const advSnap = await getDocs(query(collection(firestore, 'salaryAdvances'), limit(150)));
+    for (const docSnap of advSnap.docs) {
+      const remoteData = docSnap.data() as LocalSalaryAdvance;
+      const id = remoteData.id || docSnap.id;
+      const localExisting = await db.salaryAdvances.get(id);
+      if (
+        !localExisting ||
+        localExisting.syncStatus !== 'pending' ||
+        (remoteData.updatedAt && remoteData.updatedAt > localExisting.updatedAt)
+      ) {
+        await db.salaryAdvances.put({
+          ...remoteData,
+          id,
+          syncStatus: 'synced',
+        });
       }
     }
   } catch {
@@ -174,6 +349,166 @@ async function syncSingleItem(item: SyncQueueItem): Promise<void> {
       );
 
       await db.operationAssignments.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'report') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'reports', entityId));
+    } else {
+      const report = await db.reports.get(entityId);
+      if (!report) return;
+      await setDoc(
+        doc(firestore, 'reports', entityId),
+        {
+          ...report,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.reports.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'chatMessage') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'messages', entityId));
+    } else {
+      const msg = await db.chatMessages.get(entityId);
+      if (!msg) return;
+      await setDoc(
+        doc(firestore, 'messages', entityId),
+        {
+          ...msg,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.chatMessages.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'broadcast') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'notifications', entityId));
+    } else {
+      const bc = await db.broadcasts.get(entityId);
+      if (!bc) return;
+      await setDoc(
+        doc(firestore, 'notifications', entityId),
+        {
+          ...bc,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.broadcasts.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'debt') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'debts', entityId));
+    } else {
+      const debt = await db.debts.get(entityId);
+      if (!debt) return;
+      await setDoc(
+        doc(firestore, 'debts', entityId),
+        {
+          ...debt,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.debts.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'interAgencyTransfer') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'interAgencyTransfers', entityId));
+    } else {
+      const trf = await db.interAgencyTransfers.get(entityId);
+      if (!trf) return;
+      await setDoc(
+        doc(firestore, 'interAgencyTransfers', entityId),
+        {
+          ...trf,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.interAgencyTransfers.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'salary') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'salaries', entityId));
+    } else {
+      const sal = await db.salaries.get(entityId);
+      if (!sal) return;
+      await setDoc(
+        doc(firestore, 'salaries', entityId),
+        {
+          ...sal,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.salaries.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'salaryClaim') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'salaryClaims', entityId));
+    } else {
+      const clm = await db.salaryClaims.get(entityId);
+      if (!clm) return;
+      await setDoc(
+        doc(firestore, 'salaryClaims', entityId),
+        {
+          ...clm,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.salaryClaims.update(entityId, {
+        syncStatus: 'synced',
+        updatedAt: Date.now(),
+      });
+    }
+  } else if (entity === 'salaryAdvance') {
+    if (operation === 'delete') {
+      await deleteDoc(doc(firestore, 'salaryAdvances', entityId));
+    } else {
+      const adv = await db.salaryAdvances.get(entityId);
+      if (!adv) return;
+      await setDoc(
+        doc(firestore, 'salaryAdvances', entityId),
+        {
+          ...adv,
+          syncedAt: serverTimestamp(),
+          syncStatus: 'synced',
+        },
+        { merge: true }
+      );
+      await db.salaryAdvances.update(entityId, {
         syncStatus: 'synced',
         updatedAt: Date.now(),
       });

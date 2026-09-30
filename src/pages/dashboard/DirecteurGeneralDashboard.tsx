@@ -47,6 +47,10 @@ import RegistrationRequestsModule from './components/RegistrationRequestsModule'
 import AuditModule from './components/AuditModule';
 import SystemConfigModule from './components/SystemConfigModule';
 import AgenciesModule from './components/AgenciesModule';
+import ReportsModule from './components/ReportsModule';
+import ChatModule from './components/ChatModule';
+import TreasuryTransfersDebtsModule from './components/TreasuryTransfersDebtsModule';
+import SalaryModule from './components/SalaryModule';
 import { getDgFeatures } from '../../services/DgFeatureService';
 import { getAgencies } from '../../services/AgencyService';
 import { getAllSystemUsers } from '../../services/SystemUserService';
@@ -168,10 +172,11 @@ export default function DirecteurGeneralDashboard() {
       billetage: 'billetage',
       agencies: 'agencies',
       members: 'agents-management',
-      reports: 'audit-logs',
-      accounting: 'billetage',
+      reports: 'reports-center',
+      accounting: 'inter-agency-debts',
+      salaries: 'salaries-management',
       commissions: 'operations-management',
-      chat: 'internal-numbers',
+      chat: 'internal-chat',
       alerts: 'audit-logs',
       regulations: 'registration-requests',
       settings: 'dg-config',
@@ -315,6 +320,18 @@ export default function DirecteurGeneralDashboard() {
             {activeModuleId === 'dg-config' && (
               <SystemConfigModule onClose={() => setActiveModuleId(null)} />
             )}
+            {activeModuleId === 'reports-center' && (
+              <ReportsModule onClose={() => setActiveModuleId(null)} />
+            )}
+            {activeModuleId === 'inter-agency-debts' && (
+              <TreasuryTransfersDebtsModule onClose={() => setActiveModuleId(null)} />
+            )}
+            {activeModuleId === 'internal-chat' && (
+              <ChatModule onClose={() => setActiveModuleId(null)} />
+            )}
+            {activeModuleId === 'salaries-management' && (
+              <SalaryModule mode="dg" onClose={() => setActiveModuleId(null)} />
+            )}
           </div>
         )}
 
@@ -348,6 +365,17 @@ export default function DirecteurGeneralDashboard() {
               }`}
             >
               Opérations
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('finance')}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                selectedCategory === 'finance'
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Finance & Rapports
             </button>
             <button
               type="button"

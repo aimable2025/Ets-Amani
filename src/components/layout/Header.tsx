@@ -2,6 +2,7 @@ import {
   Bell,
   ChevronDown,
   Menu,
+  RefreshCw,
   Wifi,
   WifiOff
 } from 'lucide-react';
@@ -12,8 +13,12 @@ interface HeaderProps {
   title?: string;
   subtitle?: string;
   isOnline?: boolean;
+  pendingSyncCount?: number;
+  isSyncingNow?: boolean;
   notificationCount?: number;
+  hideMenuButtonOnDesktop?: boolean;
   onMenuClick?: () => void;
+  onSyncNowClick?: () => void;
   onNotificationsClick?: () => void;
   onProfileClick?: () => void;
 }
@@ -31,8 +36,12 @@ export default function Header({
   title = 'Tableau de bord',
   subtitle = 'Vue d ensemble de votre activité',
   isOnline = true,
+  pendingSyncCount = 0,
+  isSyncingNow = false,
   notificationCount = 0,
+  hideMenuButtonOnDesktop = false,
   onMenuClick,
+  onSyncNowClick,
   onNotificationsClick,
   onProfileClick
 }: HeaderProps) {
@@ -41,13 +50,16 @@ export default function Header({
   const roleLabel = (role && ROLE_LABELS[role]) || 'Compte actif';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="flex h-16 items-center gap-3 px-4">
+    <header className="no-print sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
         <button
           type="button"
           onClick={onMenuClick}
           aria-label="Ouvrir le menu"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+          className={[
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950',
+            hideMenuButtonOnDesktop ? 'lg:hidden' : '',
+          ].join(' ')}
         >
           <Menu size={20} />
         </button>
@@ -69,20 +81,43 @@ export default function Header({
           </p>
         </div>
 
-        <div
+        <button
+          type="button"
+          onClick={onSyncNowClick}
+          disabled={isSyncingNow}
           className={[
-            'hidden items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium sm:flex',
+            'flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-semibold transition',
             isOnline
-              ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
-              : 'border-amber-100 bg-amber-50 text-amber-700'
+              ? pendingSyncCount > 0
+                ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-emerald-100 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+              : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
           ].join(' ')}
-          title={isOnline ? 'Connexion disponible' : 'Mode hors connexion'}
+          title={
+            isOnline
+              ? pendingSyncCount > 0
+                ? `${pendingSyncCount} élément(s) en attente — Cliquer pour synchroniser maintenant`
+                : 'Synchronisé — Cliquer pour actualiser la synchronisation'
+              : 'Mode hors-ligne (Dexie actif)'
+          }
         >
-          {isOnline ? <Wifi size={15} /> : <WifiOff size={15} />}
-          <span className="hidden xl:inline">
-            {isOnline ? 'En ligne' : 'Hors ligne'}
+          {isSyncingNow ? (
+            <RefreshCw size={14} className="animate-spin text-blue-600" />
+          ) : isOnline ? (
+            <Wifi size={14} />
+          ) : (
+            <WifiOff size={14} />
+          )}
+          <span className="hidden sm:inline tabular-nums">
+            {isSyncingNow
+              ? 'Sync...'
+              : !isOnline
+                ? 'Hors ligne'
+                : pendingSyncCount > 0
+                  ? `${pendingSyncCount} à sync`
+                  : 'Synchronisé'}
           </span>
-        </div>
+        </button>
 
         <button
           type="button"

@@ -23,6 +23,9 @@ import UserAvatar from '../../components/common/UserAvatar';
 import DashboardModuleCard from '../../components/dashboard/DashboardModuleCard';
 import DashboardModuleGrid from '../../components/dashboard/DashboardModuleGrid';
 import BilletageModule from './components/BilletageModule';
+import ChatModule from './components/ChatModule';
+import TreasuryTransfersDebtsModule from './components/TreasuryTransfersDebtsModule';
+import SalaryModule from './components/SalaryModule';
 import { db } from '../../lib/db';
 import { getAgency } from '../../services/AgencyService';
 import type { Operation } from '../../types/operation';
@@ -30,6 +33,7 @@ import type { Operation } from '../../types/operation';
 export default function AgentDashboard() {
   const { user, signOut } = useAuth();
   const [showBilletage, setShowBilletage] = useState(false);
+  const [activeSubModule, setActiveSubModule] = useState<'chat' | 'transfers_debts' | 'salary' | null>(null);
   const [assignedOperations, setAssignedOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -91,9 +95,19 @@ export default function AgentDashboard() {
   const handleSidebarNavigate = (item: string) => {
     if (item === 'billetage' || item === 'accounting') {
       setShowBilletage(true);
+      setActiveSubModule(null);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (item === 'salaries') {
+      setShowBilletage(false);
+      setActiveSubModule('salary');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (item === 'chat') {
+      setShowBilletage(false);
+      setActiveSubModule('chat');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (item === 'dashboard' || item === 'transactions') {
       setShowBilletage(false);
+      setActiveSubModule(null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -136,11 +150,46 @@ export default function AgentDashboard() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowBilletage((v) => !v)}
+                onClick={() => {
+                  setActiveSubModule(null);
+                  setShowBilletage((v) => !v);
+                }}
                 className="flex items-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md hover:bg-emerald-300"
               >
                 <Coins className="h-4 w-4" />
                 {showBilletage ? 'Masquer Billetage' : 'Billetage Caisse'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBilletage(false);
+                  setActiveSubModule((cur) => (cur === 'salary' ? null : 'salary'));
+                }}
+                className="flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md hover:bg-amber-300"
+              >
+                <WalletCards className="h-4 w-4" />
+                Mon Salaire
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBilletage(false);
+                  setActiveSubModule((cur) => (cur === 'transfers_debts' ? null : 'transfers_debts'));
+                }}
+                className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20"
+              >
+                <Activity className="h-4 w-4" />
+                Dettes & Transferts
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBilletage(false);
+                  setActiveSubModule((cur) => (cur === 'chat' ? null : 'chat'));
+                }}
+                className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20"
+              >
+                Chat & Annonces
               </button>
               <button
                 type="button"
@@ -158,6 +207,24 @@ export default function AgentDashboard() {
         {showBilletage && (
           <div className="relative">
             <BilletageModule onClose={() => setShowBilletage(false)} />
+          </div>
+        )}
+
+        {activeSubModule === 'salary' && (
+          <div className="relative">
+            <SalaryModule mode="agent" onClose={() => setActiveSubModule(null)} />
+          </div>
+        )}
+
+        {activeSubModule === 'chat' && (
+          <div className="relative">
+            <ChatModule onClose={() => setActiveSubModule(null)} />
+          </div>
+        )}
+
+        {activeSubModule === 'transfers_debts' && (
+          <div className="relative">
+            <TreasuryTransfersDebtsModule onClose={() => setActiveSubModule(null)} />
           </div>
         )}
 

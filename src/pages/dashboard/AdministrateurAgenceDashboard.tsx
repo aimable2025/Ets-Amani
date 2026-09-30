@@ -5,10 +5,13 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Coins,
+  FileText,
   History,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   RefreshCw,
+  Scale,
   Search,
   Settings,
   ShieldCheck,
@@ -29,11 +32,24 @@ import OperationModule from './components/OperationModule';
 import AgentManagementModule from './components/AgentManagementModule';
 import RegistrationRequestsModule from './components/RegistrationRequestsModule';
 import ConnectivityModule from './components/ConnectivityModule';
+import ReportsModule from './components/ReportsModule';
+import ChatModule from './components/ChatModule';
+import TreasuryTransfersDebtsModule from './components/TreasuryTransfersDebtsModule';
+import SalaryModule from './components/SalaryModule';
 import { db } from '../../lib/db';
 import { getAgency } from '../../services/AgencyService';
 import { getAgencyUsers } from '../../services/AgencyUserService';
 
-type ModuleId = 'billetage' | 'operations' | 'agents' | 'registrations' | 'connectivity';
+type ModuleId =
+  | 'billetage'
+  | 'operations'
+  | 'agents'
+  | 'registrations'
+  | 'connectivity'
+  | 'reports'
+  | 'chat'
+  | 'transfers_debts'
+  | 'salaries';
 
 export default function AdministrateurAgenceDashboard() {
   const { user, signOut } = useAuth();
@@ -114,6 +130,10 @@ export default function AdministrateurAgenceDashboard() {
       transactions: 'operations',
       billetage: 'billetage',
       members: 'agents',
+      reports: 'reports',
+      accounting: 'transfers_debts',
+      salaries: 'salaries',
+      chat: 'chat',
       regulations: 'registrations',
       settings: 'connectivity',
     };
@@ -240,6 +260,18 @@ export default function AdministrateurAgenceDashboard() {
             {activeModule === 'connectivity' && (
               <ConnectivityModule onClose={() => setActiveModule(null)} />
             )}
+            {activeModule === 'reports' && (
+              <ReportsModule onClose={() => setActiveModule(null)} />
+            )}
+            {activeModule === 'chat' && (
+              <ChatModule onClose={() => setActiveModule(null)} />
+            )}
+            {activeModule === 'transfers_debts' && (
+              <TreasuryTransfersDebtsModule onClose={() => setActiveModule(null)} />
+            )}
+            {activeModule === 'salaries' && (
+              <SalaryModule mode="agent" onClose={() => setActiveModule(null)} />
+            )}
           </div>
         )}
 
@@ -253,11 +285,41 @@ export default function AdministrateurAgenceDashboard() {
             onClick={() => setActiveModule('billetage')}
           />
           <DashboardModuleCard
+            title="Salaires & Guichet Payeur"
+            description="Décaissement des salaires et avances autorisés par le DG pour l'agence."
+            icon={Coins}
+            variant="success"
+            badge="Paie Agence"
+            onClick={() => setActiveModule('salaries')}
+          />
+          <DashboardModuleCard
             title="Missions & Opérations"
             description="Affectation des tâches opérationnelles aux agents et suivi de complétion."
             icon={Activity}
             variant="primary"
             onClick={() => setActiveModule('operations')}
+          />
+          <DashboardModuleCard
+            title="Rapports d'Agence & Exports"
+            description="États financiers, opérationnels et clôtures de l'agence en PDF et Excel."
+            icon={FileText}
+            variant="success"
+            badge="PDF / Excel"
+            onClick={() => setActiveModule('reports')}
+          />
+          <DashboardModuleCard
+            title="Transferts Inter-Agences & Dettes"
+            description="Ravitaillements inter-agences, suivi des dettes et remboursements locaux."
+            icon={Scale}
+            variant="warning"
+            onClick={() => setActiveModule('transfers_debts')}
+          />
+          <DashboardModuleCard
+            title="Chat Interne, Annonces & IA"
+            description="Messagerie d'agence, notes de service officielles et assistant analytique."
+            icon={MessageSquare}
+            variant="primary"
+            onClick={() => setActiveModule('chat')}
           />
           <DashboardModuleCard
             title="Gestion des Agents de l'Agence"
