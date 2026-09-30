@@ -147,11 +147,28 @@ export default function AdministrateurAgenceDashboard() {
     }
   };
 
+  const sidebarActiveItem = useMemo(() => {
+    if (!activeModule) return 'dashboard';
+    const reverseMap: Record<ModuleId, string> = {
+      billetage: 'billetage',
+      operations: 'transactions',
+      agents: 'members',
+      registrations: 'regulations',
+      connectivity: 'settings',
+      reports: 'reports',
+      chat: 'chat',
+      transfers: 'transfers',
+      debts: 'debts',
+      salaries: 'salaries',
+    };
+    return reverseMap[activeModule] || activeModule;
+  }, [activeModule]);
+
   return (
     <AppLayout
       title={`Administration — ${agencyName}`}
       subtitle="Gestion opérationnelle, caisse locale et affectation des agents"
-      activeItem={activeModule || 'dashboard'}
+      activeItem={sidebarActiveItem}
       onNavigate={handleSidebarNavigate}
     >
       <div className="space-y-6">

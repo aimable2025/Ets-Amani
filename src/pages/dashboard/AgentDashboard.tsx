@@ -30,6 +30,7 @@ import TreasuryTransfersDebtsModule from './components/TreasuryTransfersDebtsMod
 import SalaryModule from './components/SalaryModule';
 import { db } from '../../lib/db';
 import { getAgency } from '../../services/AgencyService';
+import { triggerSyncNow } from '../../services/SyncWorker';
 import type { Operation } from '../../types/operation';
 
 export default function AgentDashboard() {
@@ -89,6 +90,7 @@ export default function AgentDashboard() {
         updatedAt: Date.now(),
       });
       await loadOperations();
+      void triggerSyncNow();
     } catch {
       // ignore
     } finally {
@@ -124,11 +126,17 @@ export default function AgentDashboard() {
     }
   };
 
+  const sidebarActiveItem = showBilletage
+    ? 'billetage'
+    : activeSubModule === 'salary'
+      ? 'salaries'
+      : activeSubModule || 'dashboard';
+
   return (
     <AppLayout
       title="Espace Agent — Ets AMANI"
       subtitle="Guichet, exécution des opérations & tenue de caisse locale"
-      activeItem={showBilletage ? 'billetage' : 'dashboard'}
+      activeItem={sidebarActiveItem}
       onNavigate={handleSidebarNavigate}
     >
       <div className="space-y-6">

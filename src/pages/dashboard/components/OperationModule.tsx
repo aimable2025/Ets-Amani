@@ -25,6 +25,7 @@ import {
   getAgencyUsersByRole,
   type AgencyUser,
 } from '../../../services/AgencyUserService';
+import { triggerSyncNow } from '../../../services/SyncWorker';
 import type {
   Operation,
   OperationPriority,
@@ -191,8 +192,12 @@ export default function OperationModule({ onClose }: OperationModuleProps) {
     setLoadingOperations(true);
     try {
       const localOperations = await db.operations.toArray();
-      localOperations.sort((a, b) => b.createdAt - a.createdAt);
-      setOperations(localOperations);
+      const scopedOperations =
+        currentUser?.role === 'administrateur_agence' && currentUser.agencyId
+          ? localOperations.filter((op) => op.agencyId === currentUser.agencyId)
+          : localOperations;
+      scopedOperations.sort((a, b) => b.createdAt - a.createdAt);
+      setOperations(scopedOperations);
     } catch (error) {
       console.warn('Ets AMANI - chargement opérations :', error);
     } finally {
@@ -351,8 +356,9 @@ export default function OperationModule({ onClose }: OperationModuleProps) {
       await db.operations.put(operation);
 
       for (const agent of selectedAgents) {
+        const assignmentId = generateId('assignment');
         await db.operationAssignments.put({
-          id: generateId('assignment'),
+          id: assignmentId,
           operationId,
           operationNumber,
           agencyId: selectedAgencyId,
@@ -366,6 +372,16 @@ export default function OperationModule({ onClose }: OperationModuleProps) {
           createdAt: now,
           updatedAt: now,
           syncStatus: 'pending',
+        });
+        await db.syncQueue.add({
+          entity: 'operationAssignment',
+          entityId: assignmentId,
+          operation: 'create',
+          attempts: 0,
+          lastError: null,
+          status: 'pending',
+          createdAt: now,
+          updatedAt: now,
         });
       }
 
@@ -381,6 +397,7 @@ export default function OperationModule({ onClose }: OperationModuleProps) {
       });
 
       await loadOperations();
+      void triggerSyncNow();
       setSuccessMessage(`Opération ${operationNumber} enregistrée localement.`);
       setTitle('');
       setDescription('');

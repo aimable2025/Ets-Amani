@@ -303,11 +303,31 @@ export default function DirecteurGeneralDashboard() {
     );
   };
 
+  const sidebarActiveItem = useMemo(() => {
+    if (!activeModuleId) return 'dashboard';
+    const reverseMap: Record<string, string> = {
+      'operations-management': 'transactions',
+      billetage: 'billetage',
+      agencies: 'agencies',
+      'agents-management': 'members',
+      'salaries-management': 'salaries',
+      'reports-center': 'reports',
+      'inter-agency-transfers': 'transfers',
+      'debts-management': 'debts',
+      'inter-agency-debts': 'transfers',
+      'internal-chat': 'chat',
+      'audit-logs': 'alerts',
+      'registration-requests': 'regulations',
+      'dg-config': 'settings',
+    };
+    return reverseMap[activeModuleId] || activeModuleId;
+  }, [activeModuleId]);
+
   return (
     <AppLayout
       title="Direction Générale — Ets AMANI"
       subtitle="Pilotage exécutif, trésorerie multi-devises et supervision réseau"
-      activeItem={activeModuleId || 'dashboard'}
+      activeItem={sidebarActiveItem}
       onNavigate={handleSidebarNavigate}
     >
       <div className="space-y-6">
