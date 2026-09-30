@@ -25,11 +25,13 @@ import {
 import { triggerSyncNow } from '../../../services/SyncWorker';
 
 interface TreasuryTransfersDebtsModuleProps {
+  mode?: 'transfers' | 'debts' | 'both';
   initialTab?: 'transfers' | 'debts';
   onClose?: () => void;
 }
 
 export default function TreasuryTransfersDebtsModule({
+  mode = 'both',
   initialTab = 'transfers',
   onClose,
 }: TreasuryTransfersDebtsModuleProps) {
@@ -37,7 +39,14 @@ export default function TreasuryTransfersDebtsModule({
   const isGlobalRole =
     user?.role === 'administrateur_systeme' || user?.role === 'directeur_general';
 
-  const [activeTab, setActiveTab] = useState<'transfers' | 'debts'>(initialTab);
+  const effectiveInitialTab =
+    mode === 'transfers' ? 'transfers' : mode === 'debts' ? 'debts' : initialTab;
+  const [activeTab, setActiveTab] = useState<'transfers' | 'debts'>(effectiveInitialTab);
+
+  useEffect(() => {
+    if (mode === 'transfers') setActiveTab('transfers');
+    if (mode === 'debts') setActiveTab('debts');
+  }, [mode]);
   const [transfers, setTransfers] = useState<LocalInterAgencyTransfer[]>([]);
   const [debts, setDebts] = useState<LocalDebt[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -232,44 +241,66 @@ export default function TreasuryTransfersDebtsModule({
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
       <div className="flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-amber-400 shadow-sm">
-            <ArrowLeftRight className="h-6 w-6" />
+          <div
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl shadow-sm ${
+              mode === 'debts'
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-slate-900 text-amber-400'
+            }`}
+          >
+            {mode === 'debts' ? (
+              <Scale className="h-6 w-6" />
+            ) : (
+              <ArrowLeftRight className="h-6 w-6" />
+            )}
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900">
-              Transferts Inter-Agences & Suivi des Dettes
+              {mode === 'transfers'
+                ? 'Transferts Inter-Agences'
+                : mode === 'debts'
+                  ? 'Suivi des Dettes & Créances'
+                  : 'Transferts Inter-Agences & Suivi des Dettes'}
             </h2>
             <p className="text-xs text-slate-500">
-              Mouvements de fonds inter-succursales, ravitaillements et recouvrement des créances
+              {mode === 'transfers'
+                ? 'Mouvements de fonds inter-succursales (argent physique, virtuel et ravitaillements)'
+                : mode === 'debts'
+                  ? 'Suivi des dettes clients, agents et entreprise, échéances et remboursements'
+                  : 'Mouvements de fonds inter-succursales, ravitaillements et recouvrement des créances'}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('transfers')}
-            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
-              activeTab === 'transfers'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-            Transferts Inter-Agences ({transfers.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('debts')}
-            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
-              activeTab === 'debts'
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-            }`}
-          >
-            <Scale className="h-3.5 w-3.5" />
-            Dettes & Créances ({debts.filter((d) => d.status !== 'rembourse').length})
-          </button>
+          {mode === 'both' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab('transfers')}
+                className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+                  activeTab === 'transfers'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                Transferts Inter-Agences ({transfers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('debts')}
+                className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+                  activeTab === 'debts'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                }`}
+              >
+                <Scale className="h-3.5 w-3.5" />
+                Dettes & Créances ({debts.filter((d) => d.status !== 'rembourse').length})
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={loadData}

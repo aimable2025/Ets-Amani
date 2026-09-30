@@ -201,6 +201,18 @@ export interface LocalReport {
 }
 
 /**
+ * Commentaire attaché à un message du Chat Interne.
+ */
+export interface ChatMessageComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  content: string;
+  createdAt: number;
+}
+
+/**
  * Message du Chat Interne (privé, groupe, agence, service, global).
  */
 export interface LocalChatMessage {
@@ -215,6 +227,15 @@ export interface LocalChatMessage {
   recipientId?: string | null;
   recipientName?: string | null;
   serviceTag?: string | null;
+  groupName?: string | null;
+  groupParticipantIds?: string[];
+  groupParticipantNames?: string[];
+  replyToMessageId?: string | null;
+  replyToSenderName?: string | null;
+  replyToExcerpt?: string | null;
+  forwardedFromSenderName?: string | null;
+  reactions?: Record<string, string[]>;
+  comments?: ChatMessageComment[];
   content: string;
   attachmentType?: 'none' | 'image' | 'document';
   attachmentName?: string | null;

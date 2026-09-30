@@ -1,6 +1,7 @@
 import {
   Activity,
   ArrowDownLeft,
+  ArrowLeftRight,
   ArrowUpRight,
   Briefcase,
   CheckCircle2,
@@ -10,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   RefreshCw,
+  Scale,
   Search,
   Smartphone,
   WalletCards,
@@ -33,7 +35,9 @@ import type { Operation } from '../../types/operation';
 export default function AgentDashboard() {
   const { user, signOut } = useAuth();
   const [showBilletage, setShowBilletage] = useState(false);
-  const [activeSubModule, setActiveSubModule] = useState<'chat' | 'transfers_debts' | 'salary' | null>(null);
+  const [activeSubModule, setActiveSubModule] = useState<
+    'chat' | 'transfers' | 'debts' | 'salary' | null
+  >(null);
   const [assignedOperations, setAssignedOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -100,6 +104,14 @@ export default function AgentDashboard() {
     } else if (item === 'salaries') {
       setShowBilletage(false);
       setActiveSubModule('salary');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (item === 'transfers') {
+      setShowBilletage(false);
+      setActiveSubModule('transfers');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (item === 'debts') {
+      setShowBilletage(false);
+      setActiveSubModule('debts');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (item === 'chat') {
       setShowBilletage(false);
@@ -174,12 +186,23 @@ export default function AgentDashboard() {
                 type="button"
                 onClick={() => {
                   setShowBilletage(false);
-                  setActiveSubModule((cur) => (cur === 'transfers_debts' ? null : 'transfers_debts'));
+                  setActiveSubModule((cur) => (cur === 'transfers' ? null : 'transfers'));
                 }}
                 className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20"
               >
-                <Activity className="h-4 w-4" />
-                Dettes & Transferts
+                <ArrowLeftRight className="h-4 w-4" />
+                Transferts Inter-Agences
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBilletage(false);
+                  setActiveSubModule((cur) => (cur === 'debts' ? null : 'debts'));
+                }}
+                className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20"
+              >
+                <Scale className="h-4 w-4" />
+                Suivi des Dettes
               </button>
               <button
                 type="button"
@@ -222,9 +245,21 @@ export default function AgentDashboard() {
           </div>
         )}
 
-        {activeSubModule === 'transfers_debts' && (
+        {activeSubModule === 'transfers' && (
           <div className="relative">
-            <TreasuryTransfersDebtsModule onClose={() => setActiveSubModule(null)} />
+            <TreasuryTransfersDebtsModule
+              mode="transfers"
+              onClose={() => setActiveSubModule(null)}
+            />
+          </div>
+        )}
+
+        {activeSubModule === 'debts' && (
+          <div className="relative">
+            <TreasuryTransfersDebtsModule
+              mode="debts"
+              onClose={() => setActiveSubModule(null)}
+            />
           </div>
         )}
 

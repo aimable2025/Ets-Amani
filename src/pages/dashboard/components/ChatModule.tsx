@@ -5,13 +5,22 @@ import {
   Building2,
   CheckCheck,
   CheckCircle2,
+  Copy,
+  CornerUpRight,
   Globe,
   Hash,
   Lock,
+  MessageCircle,
   MessageSquare,
   Paperclip,
+  Plus,
+  Reply,
+  Search,
   Send,
+  Share2,
+  SmilePlus,
   Sparkles,
+  UserCheck,
   Users,
   X,
 } from 'lucide-react';
@@ -21,12 +30,14 @@ import { getAgencies, type Agency } from '../../../services/AgencyService';
 import { getAllSystemUsers, type ManagedUser } from '../../../services/SystemUserService';
 import {
   acknowledgeBroadcast,
+  addChatMessageComment,
   createBroadcast,
   generateIntelligentBusinessAnalysis,
   getAuthorizedBroadcasts,
   getAuthorizedChatMessages,
   markChatMessageAsRead,
   sendChatMessage,
+  toggleChatMessageReaction,
 } from '../../../services/EnterpriseOperationsService';
 import { triggerSyncNow } from '../../../services/SyncWorker';
 
@@ -35,6 +46,62 @@ interface ChatModuleProps {
 }
 
 type ActiveTab = 'chat' | 'ai_assistant' | 'broadcasts';
+
+const QUICK_REACTIONS = ['👍', '❤️', '✅', '🙏', '🔥', '⚠️'] as const;
+
+const ETS_SERVICES = [
+  { id: 'guichetier', label: 'Guichet & Caisse' },
+  { id: 'comptable', label: 'Comptabilité & Audit' },
+  { id: 'agent_operateur_mobile', label: 'Flotte & Mobile Money' },
+  { id: 'agent_change', label: 'Change USD / CDF' },
+  { id: 'agent_terrain', label: 'Opérations Terrain' },
+  { id: 'service_paie', label: 'Service Paie & Salaires' },
+  { id: 'administration_agence', label: 'Administration Agence' },
+  { id: 'direction_generale', label: 'Direction Générale' },
+] as const;
+
+interface CustomChatGroup {
+  id: string;
+  name: string;
+  participantIds: string[];
+  participantNames: string[];
+}
+
+const DEFAULT_GROUPS: CustomChatGroup[] = [
+  {
+    id: 'grp-coordination',
+    name: 'Coordination Direction & Agences',
+    participantIds: [],
+    participantNames: ['Direction Générale', 'Coordinateurs Agences'],
+  },
+  {
+    id: 'grp-tresorerie',
+    name: 'Équipe Trésorerie & Billetage',
+    participantIds: [],
+    participantNames: ['Caissiers', 'Guichetiers', 'Comptabilité'],
+  },
+  {
+    id: 'grp-mobile-money',
+    name: 'Opérateurs Flotte & Mobile Money',
+    participantIds: [],
+    participantNames: ['Opérateurs Mobile', 'Superviseurs SMS'],
+  },
+];
+
+const CUSTOM_GROUPS_STORAGE_KEY = 'ets_amani_custom_chat_groups_v1';
+
+function loadSavedGroups(): CustomChatGroup[] {
+  if (typeof window === 'undefined') return DEFAULT_GROUPS;
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_GROUPS_STORAGE_KEY);
+    if (!raw) return DEFAULT_GROUPS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_GROUPS;
+    return [...DEFAULT_GROUPS, ...parsed];
+  } catch {
+    return DEFAULT_GROUPS;
+  }
+}
 
 export default function ChatModule({ onClose }: ChatModuleProps) {
   const { user } = useAuth();
@@ -49,17 +116,41 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [usersList, setUsersList] = useState<ManagedUser[]>([]);
 
-  // Sélection du canal de discussion
+  // Sélection du destinataire / canal de discussion
   const [channelType, setChannelType] = useState<LocalChatMessage['channelType']>('global');
   const [selectedServiceTag, setSelectedServiceTag] = useState<string>('guichetier');
   const [selectedRecipientId, setSelectedRecipientId] = useState<string>('');
+  const [userSearchQuery, setUserSearchQuery] = useState<string>('');
+
+  // Gestion des groupes (prédéfinis + personnalisés)
+  const [groups, setGroups] = useState<CustomChatGroup[]>(loadSavedGroups);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('grp-coordination');
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupMemberIds, setNewGroupMemberIds] = useState<string[]>([]);
+
+  // Rédaction, Réponse (Reply), Réactions, Commentaires et Partage/Transfert
   const [messageText, setMessageText] = useState('');
   const [attachmentName, setAttachmentName] = useState<string | null>(null);
-  const [Sending, setSending] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<LocalChatMessage | null>(null);
+  const [openReactionPickerMsgId, setOpenReactionPickerMsgId] = useState<string | null>(null);
+  const [openCommentsMsgIds, setOpenCommentsMsgIds] = useState<Record<string, boolean>>({});
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
+  const [sharingMessage, setSharingMessage] = useState<LocalChatMessage | null>(null);
+  const [shareTargetType, setShareTargetType] =
+    useState<LocalChatMessage['channelType']>('prive');
+  const [shareRecipientId, setShareRecipientId] = useState<string>('');
+  const [shareServiceTag, setShareServiceTag] = useState<string>('guichetier');
+  const [shareGroupId, setShareGroupId] = useState<string>('grp-coordination');
+  const [shareNote, setShareNote] = useState<string>('');
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
   // Assistant Intelligent Métier
   const [aiPrompt, setAiPrompt] = useState('');
-  const [aiHistory, setAiHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string; time: number }>>([
+  const [aiHistory, setAiHistory] = useState<
+    Array<{ role: 'user' | 'assistant'; text: string; time: number }>
+  >([
     {
       role: 'assistant',
       text: "Bonjour ! Je suis l'Assistant Analytique Interne Ets AMANI. Posez-moi une question sur votre trésorerie, vos écarts de billetage, vos opérations en attente, vos dettes ou vos transferts inter-agences.",
@@ -80,6 +171,14 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
   const [bcRequiresAck, setBcRequiresAck] = useState(true);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
+
+  const showToast = (msg: string) => {
+    setFeedbackToast(msg);
+    setTimeout(() => {
+      setFeedbackToast((cur) => (cur === msg ? null : cur));
+    }, 3200);
+  };
 
   const loadAll = async () => {
     if (!user) return;
@@ -101,41 +200,87 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
 
   useEffect(() => {
     void loadAll();
-    const interval = setInterval(loadAll, 6000);
+    const interval = setInterval(loadAll, 5000);
     return () => clearInterval(interval);
   }, [user?.uid, user?.agencyId]);
+
+  const filteredUsers = useMemo(() => {
+    if (!userSearchQuery.trim()) return usersList;
+    const q = userSearchQuery.toLowerCase();
+    return usersList.filter(
+      (u) =>
+        (u.displayName || '').toLowerCase().includes(q) ||
+        (u.role || '').toLowerCase().includes(q) ||
+        (u.function || '').toLowerCase().includes(q) ||
+        (u.agencyId || '').toLowerCase().includes(q)
+    );
+  }, [usersList, userSearchQuery]);
+
+  const activeGroup = useMemo(
+    () => groups.find((g) => g.id === selectedGroupId) || groups[0],
+    [groups, selectedGroupId]
+  );
+
+  const activeServiceLabel = useMemo(
+    () =>
+      ETS_SERVICES.find((s) => s.id === selectedServiceTag)?.label ||
+      selectedServiceTag,
+    [selectedServiceTag]
+  );
 
   const currentChannelId = useMemo(() => {
     if (channelType === 'global') return 'channel-global';
     if (channelType === 'agence') return `channel-agency-${user?.agencyId || 'centrale'}`;
-    if (channelType === 'groupe') return 'channel-direction-coordinateurs';
+    if (channelType === 'groupe') return `channel-group-${activeGroup?.id || 'coordination'}`;
     if (channelType === 'service') return `channel-service-${selectedServiceTag}`;
     if (channelType === 'prive') {
       const ids = [user?.uid || '', selectedRecipientId || 'none'].sort();
       return `channel-dm-${ids.join('-')}`;
     }
     return 'channel-global';
-  }, [channelType, user?.agencyId, user?.uid, selectedServiceTag, selectedRecipientId]);
+  }, [channelType, user?.agencyId, user?.uid, activeGroup, selectedServiceTag, selectedRecipientId]);
 
   const currentChannelName = useMemo(() => {
     if (channelType === 'global') return 'Canal Général Réseau Ets AMANI';
     if (channelType === 'agence') return `Canal Agence (${user?.agencyId || 'Locale'})`;
-    if (channelType === 'groupe') return 'Groupe Coordination Direction & Agences';
-    if (channelType === 'service') return `Canal Service : ${selectedServiceTag}`;
+    if (channelType === 'groupe') {
+      return `Groupe : ${activeGroup?.name || 'Coordination'}`;
+    }
+    if (channelType === 'service') {
+      return `Service : ${activeServiceLabel}`;
+    }
     if (channelType === 'prive') {
       const target = usersList.find((u) => u.uid === selectedRecipientId);
-      return target ? `Discussion privée • ${target.displayName}` : 'Discussion privée';
+      return target
+        ? `Destinataire : ${target.displayName} (${target.function || target.role})`
+        : 'Tous mes messages privés directs';
     }
     return 'Canal Général';
-  }, [channelType, user?.agencyId, selectedServiceTag, selectedRecipientId, usersList]);
+  }, [
+    channelType,
+    user?.agencyId,
+    activeGroup,
+    activeServiceLabel,
+    selectedRecipientId,
+    usersList,
+  ]);
 
   const channelMessages = useMemo(() => {
     return messages.filter((m) => {
       if (channelType === 'global') return m.channelType === 'global';
       if (channelType === 'agence') return m.channelType === 'agence';
-      if (channelType === 'groupe') return m.channelType === 'groupe';
+      if (channelType === 'groupe') {
+        if (m.channelType !== 'groupe') return false;
+        if (activeGroup?.id === 'grp-coordination' && m.channelId === 'channel-direction-coordinateurs') {
+          return true;
+        }
+        return m.channelId === currentChannelId || m.groupName === activeGroup?.name;
+      }
       if (channelType === 'service') {
-        return m.channelType === 'service' && (!m.serviceTag || m.serviceTag === selectedServiceTag);
+        return (
+          m.channelType === 'service' &&
+          (!m.serviceTag || m.serviceTag === selectedServiceTag)
+        );
       }
       if (channelType === 'prive') {
         if (!selectedRecipientId) return m.channelType === 'prive';
@@ -147,7 +292,15 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
       }
       return true;
     });
-  }, [messages, channelType, selectedServiceTag, selectedRecipientId, user?.uid]);
+  }, [
+    messages,
+    channelType,
+    selectedServiceTag,
+    selectedRecipientId,
+    user?.uid,
+    activeGroup,
+    currentChannelId,
+  ]);
 
   // Marquer automatiquement comme lus les messages affichés
   useEffect(() => {
@@ -159,9 +312,48 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
     });
   }, [channelMessages, user]);
 
+  const handleCreateCustomGroup = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGroupName.trim() || !user) return;
+    const selectedUsers = usersList.filter((u) => newGroupMemberIds.includes(u.uid));
+    const participantIds = Array.from(new Set([user.uid, ...selectedUsers.map((u) => u.uid)]));
+    const participantNames = [
+      user.displayName || 'Moi',
+      ...selectedUsers.map((u) => u.displayName || u.email || 'Membre'),
+    ];
+    const customGroup: CustomChatGroup = {
+      id: `grp-${Date.now()}`,
+      name: newGroupName.trim(),
+      participantIds,
+      participantNames,
+    };
+
+    const existingCustom = groups.filter(
+      (g) => !DEFAULT_GROUPS.some((dg) => dg.id === g.id)
+    );
+    const updatedCustom = [...existingCustom, customGroup];
+    try {
+      window.localStorage.setItem(CUSTOM_GROUPS_STORAGE_KEY, JSON.stringify(updatedCustom));
+    } catch {
+      // ignore
+    }
+    setGroups([...DEFAULT_GROUPS, ...updatedCustom]);
+    setSelectedGroupId(customGroup.id);
+    setChannelType('groupe');
+    setNewGroupName('');
+    setNewGroupMemberIds([]);
+    setShowCreateGroupModal(false);
+    showToast(`Groupe « ${customGroup.name} » créé et sélectionné.`);
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !messageText.trim()) return;
+    if (channelType === 'prive' && !selectedRecipientId) {
+      showToast('Veuillez sélectionner un utilisateur destinataire.');
+      return;
+    }
+
     setSending(true);
     try {
       const recipient = usersList.find((u) => u.uid === selectedRecipientId);
@@ -172,8 +364,19 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
           channelName: currentChannelName,
           agencyId: user.agencyId || null,
           recipientId: channelType === 'prive' ? selectedRecipientId || null : null,
-          recipientName: channelType === 'prive' ? recipient?.displayName || null : null,
+          recipientName:
+            channelType === 'prive' ? recipient?.displayName || null : null,
           serviceTag: channelType === 'service' ? selectedServiceTag : null,
+          groupName: channelType === 'groupe' ? activeGroup?.name || null : null,
+          groupParticipantIds:
+            channelType === 'groupe' ? activeGroup?.participantIds || [] : [],
+          groupParticipantNames:
+            channelType === 'groupe' ? activeGroup?.participantNames || [] : [],
+          replyToMessageId: replyingTo?.id || null,
+          replyToSenderName: replyingTo?.senderName || null,
+          replyToExcerpt: replyingTo
+            ? replyingTo.content.slice(0, 120)
+            : null,
           content: messageText,
           attachmentType: attachmentName ? 'document' : 'none',
           attachmentName,
@@ -182,12 +385,112 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
       );
       setMessageText('');
       setAttachmentName(null);
+      setReplyingTo(null);
       await loadAll();
       void triggerSyncNow();
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     } finally {
       setSending(false);
     }
+  };
+
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (!user) return;
+    await toggleChatMessageReaction(messageId, emoji, user.uid);
+    setOpenReactionPickerMsgId(null);
+    await loadAll();
+    void triggerSyncNow();
+  };
+
+  const handleAddComment = async (messageId: string) => {
+    if (!user) return;
+    const text = (commentInputs[messageId] || '').trim();
+    if (!text) return;
+    await addChatMessageComment(messageId, text, user);
+    setCommentInputs((prev) => ({ ...prev, [messageId]: '' }));
+    setOpenCommentsMsgIds((prev) => ({ ...prev, [messageId]: true }));
+    await loadAll();
+    void triggerSyncNow();
+  };
+
+  const handleReplyToMessage = (msg: LocalChatMessage) => {
+    setReplyingTo(msg);
+    messageInputRef.current?.focus();
+  };
+
+  const handleCopyMessage = async (msg: LocalChatMessage) => {
+    const formatted = `[Ets AMANI • ${msg.senderName}] : ${msg.content}`;
+    try {
+      await navigator.clipboard.writeText(formatted);
+      showToast('Message copié dans le presse-papiers.');
+    } catch {
+      showToast('Copie effectuée.');
+    }
+  };
+
+  const handleConfirmForwardMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !sharingMessage) return;
+
+    if (shareTargetType === 'prive' && !shareRecipientId) {
+      showToast('Veuillez choisir un utilisateur destinataire pour le partage.');
+      return;
+    }
+
+    const recipient = usersList.find((u) => u.uid === shareRecipientId);
+    const targetGroup = groups.find((g) => g.id === shareGroupId) || groups[0];
+    const targetService =
+      ETS_SERVICES.find((s) => s.id === shareServiceTag)?.label || shareServiceTag;
+
+    let targetChannelId = 'channel-global';
+    let targetChannelName = 'Canal Général Réseau Ets AMANI';
+    if (shareTargetType === 'agence') {
+      targetChannelId = `channel-agency-${user.agencyId || 'centrale'}`;
+      targetChannelName = `Canal Agence (${user.agencyId || 'Locale'})`;
+    } else if (shareTargetType === 'groupe') {
+      targetChannelId = `channel-group-${targetGroup.id}`;
+      targetChannelName = `Groupe : ${targetGroup.name}`;
+    } else if (shareTargetType === 'service') {
+      targetChannelId = `channel-service-${shareServiceTag}`;
+      targetChannelName = `Service : ${targetService}`;
+    } else if (shareTargetType === 'prive') {
+      const ids = [user.uid, shareRecipientId].sort();
+      targetChannelId = `channel-dm-${ids.join('-')}`;
+      targetChannelName = `Destinataire : ${recipient?.displayName || 'Utilisateur'}`;
+    }
+
+    const forwardedContent = shareNote.trim()
+      ? `${shareNote.trim()}\n\n— Message partagé de ${sharingMessage.senderName} :\n« ${sharingMessage.content} »`
+      : sharingMessage.content;
+
+    await sendChatMessage(
+      {
+        channelType: shareTargetType,
+        channelId: targetChannelId,
+        channelName: targetChannelName,
+        agencyId: user.agencyId || null,
+        recipientId: shareTargetType === 'prive' ? shareRecipientId : null,
+        recipientName:
+          shareTargetType === 'prive' ? recipient?.displayName || null : null,
+        serviceTag: shareTargetType === 'service' ? shareServiceTag : null,
+        groupName: shareTargetType === 'groupe' ? targetGroup.name : null,
+        groupParticipantIds:
+          shareTargetType === 'groupe' ? targetGroup.participantIds : [],
+        groupParticipantNames:
+          shareTargetType === 'groupe' ? targetGroup.participantNames : [],
+        forwardedFromSenderName: sharingMessage.senderName,
+        content: forwardedContent,
+        attachmentType: sharingMessage.attachmentType || 'none',
+        attachmentName: sharingMessage.attachmentName || null,
+      },
+      user
+    );
+
+    setSharingMessage(null);
+    setShareNote('');
+    await loadAll();
+    void triggerSyncNow();
+    showToast(`Message partagé vers ${targetChannelName}.`);
   };
 
   const handleAskAssistant = async (customQuestion?: string) => {
@@ -259,7 +562,7 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
               Communication Interne, Annonces & Assistant Métier
             </h2>
             <p className="text-xs text-slate-500">
-              Canaux Privé, Groupe, Agence, Service, Global & Synthèse Intelligente Offline-First
+              Destinataires au choix (Utilisateur, Service, Groupe, Agence, Global) • Réactions, Réponses, Commentaires & Partage
             </p>
           </div>
         </div>
@@ -318,144 +621,725 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
         </div>
       </div>
 
+      {feedbackToast && (
+        <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-900">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span>{feedbackToast}</span>
+          </div>
+          <button type="button" onClick={() => setFeedbackToast(null)}>
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* ONGLET 1 : CHAT INTERNE MULTI-CANAUX */}
       {activeTab === 'chat' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Sélecteur de type de conversation */}
-          <div className="space-y-3 lg:col-span-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Canaux de conversation
-            </p>
-            <div className="space-y-1.5">
-              {(
-                [
-                  { id: 'global', label: 'Global (Tout Ets AMANI)', icon: Globe },
-                  { id: 'agence', label: 'Mon Agence Locale', icon: Building2 },
-                  { id: 'groupe', label: 'Groupe Coordination', icon: Users },
-                  { id: 'service', label: 'Par Service Opérationnel', icon: Hash },
-                  { id: 'prive', label: 'Message Privé Direct', icon: Lock },
-                ] as const
-              ).map((ch) => {
-                const Icon = ch.icon;
-                const active = channelType === ch.id;
-                return (
-                  <button
-                    key={ch.id}
-                    type="button"
-                    onClick={() => setChannelType(ch.id)}
-                    className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold transition ${
-                      active
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span>{ch.label}</span>
-                  </button>
-                );
-              })}
+          {/* Colonne gauche : Choix du Destinataire (Utilisateur, Service, Groupe, Agence, Global) */}
+          <div className="space-y-4 lg:col-span-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                1. Type de destinataire
+              </p>
+              <div className="space-y-1.5">
+                {(
+                  [
+                    {
+                      id: 'prive',
+                      label: 'Utilisateur Ets AMANI (Privé)',
+                      icon: Lock,
+                      badge: `${usersList.length} membre(s)`,
+                    },
+                    {
+                      id: 'service',
+                      label: 'Service en particulier',
+                      icon: Hash,
+                      badge: `${ETS_SERVICES.length} services`,
+                    },
+                    {
+                      id: 'groupe',
+                      label: 'Chat en Groupe',
+                      icon: Users,
+                      badge: `${groups.length} groupes`,
+                    },
+                    {
+                      id: 'agence',
+                      label: 'Canal de mon Agence',
+                      icon: Building2,
+                    },
+                    {
+                      id: 'global',
+                      label: 'Réseau Global Ets AMANI',
+                      icon: Globe,
+                    },
+                  ] as const
+                ).map((ch) => {
+                  const Icon = ch.icon;
+                  const active = channelType === ch.id;
+                  return (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() => setChannelType(ch.id)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-xs font-bold transition ${
+                        active
+                          ? 'bg-slate-900 text-white shadow-sm'
+                          : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{ch.label}</span>
+                      </div>
+                      {'badge' in ch && ch.badge && (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            active
+                              ? 'bg-white/15 text-white'
+                              : 'bg-slate-200/70 text-slate-600'
+                          }`}
+                        >
+                          {ch.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {channelType === 'service' && (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Choisir le service :
-                </label>
-                <select
-                  value={selectedServiceTag}
-                  onChange={(e) => setSelectedServiceTag(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold"
-                >
-                  <option value="guichetier">Guichet & Caisse</option>
-                  <option value="comptable">Comptabilité & Audit</option>
-                  <option value="agent_operateur_mobile">Flotte & Mobile Money</option>
-                  <option value="agent_change">Change USD / CDF</option>
-                  <option value="agent_terrain">Opérations Terrain</option>
-                </select>
+            {/* Sélection d'un utilisateur précis de l'application Ets AMANI */}
+            {channelType === 'prive' && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                    Choisir l'utilisateur destinataire :
+                  </label>
+                  {selectedRecipientId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRecipientId('')}
+                      className="text-[10px] font-bold text-blue-600 hover:underline"
+                    >
+                      Voir tous
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="Rechercher par nom, rôle, fonction..."
+                    className="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs outline-none focus:border-slate-900"
+                  />
+                </div>
+
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                  {filteredUsers.length === 0 ? (
+                    <p className="py-3 text-center text-[11px] text-slate-400">
+                      Aucun utilisateur trouvé.
+                    </p>
+                  ) : (
+                    filteredUsers.map((u) => {
+                      const isSelected = selectedRecipientId === u.uid;
+                      return (
+                        <button
+                          key={u.uid}
+                          type="button"
+                          onClick={() => setSelectedRecipientId(u.uid)}
+                          className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs transition ${
+                            isSelected
+                              ? 'bg-blue-600 text-white font-bold shadow-xs'
+                              : 'bg-white text-slate-800 hover:bg-slate-100 border border-slate-200/70'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-bold">{u.displayName}</p>
+                            <p
+                              className={`truncate text-[10px] ${
+                                isSelected ? 'text-blue-100' : 'text-slate-500'
+                              }`}
+                            >
+                              {u.function || u.role}
+                              {u.agencyId ? ` • ${u.agencyId}` : ''}
+                            </p>
+                          </div>
+                          <span
+                            className={`ml-2 shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                              isSelected
+                                ? 'bg-white/20 text-white'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            Choisir
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
 
-            {channelType === 'prive' && (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Destinataire :
+            {/* Sélection d'un service particulier */}
+            {channelType === 'service' && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+                <label className="block text-[11px] font-bold text-slate-700">
+                  Choisir le service destinataire :
                 </label>
-                <select
-                  value={selectedRecipientId}
-                  onChange={(e) => setSelectedRecipientId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold"
-                >
-                  <option value="">Tous mes messages privés</option>
-                  {usersList.map((u) => (
-                    <option key={u.uid} value={u.uid}>
-                      {u.displayName} ({u.role})
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-1">
+                  {ETS_SERVICES.map((srv) => {
+                    const active = selectedServiceTag === srv.id;
+                    return (
+                      <button
+                        key={srv.id}
+                        type="button"
+                        onClick={() => setSelectedServiceTag(srv.id)}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                          active
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/70'
+                        }`}
+                      >
+                        <span># {srv.label}</span>
+                        {active && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Sélection ou création d'un groupe */}
+            {channelType === 'groupe' && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-slate-700">
+                    Groupes de discussion :
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateGroupModal((v) => !v)}
+                    className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-800"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Nouveau groupe
+                  </button>
+                </div>
+
+                {showCreateGroupModal && (
+                  <form
+                    onSubmit={handleCreateCustomGroup}
+                    className="rounded-xl border border-blue-200 bg-white p-3 space-y-2"
+                  >
+                    <p className="text-[11px] font-bold text-slate-800">
+                      Créer un groupe personnalisé
+                    </p>
+                    <input
+                      type="text"
+                      required
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="Nom du groupe (ex: Comité Caisse)"
+                      className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+                    />
+                    <p className="text-[10px] font-semibold text-slate-500">
+                      Sélectionner les membres ({newGroupMemberIds.length}) :
+                    </p>
+                    <div className="max-h-28 overflow-y-auto space-y-1 border border-slate-100 rounded-lg p-1.5">
+                      {usersList.map((u) => {
+                        const checked = newGroupMemberIds.includes(u.uid);
+                        return (
+                          <label
+                            key={u.uid}
+                            className="flex items-center gap-2 text-[11px] text-slate-700 cursor-pointer hover:bg-slate-50 px-1.5 py-1 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewGroupMemberIds((prev) => [...prev, u.uid]);
+                                } else {
+                                  setNewGroupMemberIds((prev) =>
+                                    prev.filter((id) => id !== u.uid)
+                                  );
+                                }
+                              }}
+                            />
+                            <span className="truncate font-medium">
+                              {u.displayName} ({u.function || u.role})
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="flex justify-end gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateGroupModal(false)}
+                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-600"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="submit"
+                        className="rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white"
+                      >
+                        Créer le groupe
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="space-y-1">
+                  {groups.map((grp) => {
+                    const active = selectedGroupId === grp.id;
+                    return (
+                      <button
+                        key={grp.id}
+                        type="button"
+                        onClick={() => setSelectedGroupId(grp.id)}
+                        className={`flex w-full flex-col rounded-xl px-3 py-2 text-left text-xs transition ${
+                          active
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-800 hover:bg-slate-100 border border-slate-200/70'
+                        }`}
+                      >
+                        <span className="font-bold">{grp.name}</span>
+                        <span
+                          className={`truncate text-[10px] ${
+                            active ? 'text-blue-100' : 'text-slate-500'
+                          }`}
+                        >
+                          {grp.participantNames.join(', ')}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Fil de discussion */}
+          {/* Colonne droite : Fil de discussion interactif */}
           <div className="flex flex-col rounded-2xl border border-slate-200 bg-slate-50 lg:col-span-8">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 rounded-t-2xl">
+            {/* Barre supérieure du canal & sélecteur rapide de destinataire */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 rounded-t-2xl">
               <div>
-                <h3 className="text-xs font-black text-slate-900">{currentChannelName}</h3>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  <h3 className="text-xs font-black text-slate-900">
+                    {currentChannelName}
+                  </h3>
+                </div>
                 <p className="text-[11px] text-slate-500">
-                  Synchronisation Offline-First active ({channelMessages.length} message(s))
+                  {channelMessages.length} message(s) • Réactions, commentaires, réponses et transfert actifs
                 </p>
+              </div>
+
+              {/* Sélecteur rapide de destinataire dans l'en-tête du chat */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value={channelType}
+                  onChange={(e) =>
+                    setChannelType(e.target.value as LocalChatMessage['channelType'])
+                  }
+                  aria-label="Type de destinataire"
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-800"
+                >
+                  <option value="prive">Destinataire : Utilisateur</option>
+                  <option value="service">Destinataire : Service</option>
+                  <option value="groupe">Destinataire : Groupe</option>
+                  <option value="agence">Destinataire : Mon Agence</option>
+                  <option value="global">Destinataire : Global</option>
+                </select>
+
+                {channelType === 'prive' && (
+                  <select
+                    value={selectedRecipientId}
+                    onChange={(e) => setSelectedRecipientId(e.target.value)}
+                    aria-label="Choisir un utilisateur"
+                    className="max-w-[190px] rounded-xl border border-blue-200 bg-blue-50/60 px-2.5 py-1.5 text-[11px] font-bold text-blue-900"
+                  >
+                    <option value="">-- Choisir un utilisateur --</option>
+                    {usersList.map((u) => (
+                      <option key={u.uid} value={u.uid}>
+                        {u.displayName} ({u.function || u.role})
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {channelType === 'service' && (
+                  <select
+                    value={selectedServiceTag}
+                    onChange={(e) => setSelectedServiceTag(e.target.value)}
+                    aria-label="Choisir un service"
+                    className="rounded-xl border border-blue-200 bg-blue-50/60 px-2.5 py-1.5 text-[11px] font-bold text-blue-900"
+                  >
+                    {ETS_SERVICES.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {channelType === 'groupe' && (
+                  <select
+                    value={selectedGroupId}
+                    onChange={(e) => setSelectedGroupId(e.target.value)}
+                    aria-label="Choisir un groupe"
+                    className="rounded-xl border border-blue-200 bg-blue-50/60 px-2.5 py-1.5 text-[11px] font-bold text-blue-900"
+                  >
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
-            <div className="h-80 overflow-y-auto p-4 space-y-3">
+            {/* Liste des messages */}
+            <div className="h-[420px] overflow-y-auto p-4 space-y-4">
               {channelMessages.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
                   <MessageSquare className="h-8 w-8 mb-2 text-slate-300" />
                   <p className="text-xs font-bold text-slate-600">
-                    Aucun message dans ce canal
+                    Aucun message dans cette conversation
                   </p>
                   <p className="text-[11px]">
-                    Envoyez le premier message à votre équipe.
+                    Choisissez votre destinataire (utilisateur, service ou groupe) et envoyez un message.
                   </p>
                 </div>
               ) : (
                 channelMessages.map((msg) => {
                   const isMe = msg.senderId === user?.uid;
+                  const reactionEntries = Object.entries(msg.reactions || {}).filter(
+                    ([, uids]) => Array.isArray(uids) && uids.length > 0
+                  );
+                  const commentsList = msg.comments || [];
+                  const isCommentsOpen = Boolean(openCommentsMsgIds[msg.id]);
+
                   return (
                     <div
                       key={msg.id}
                       className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs shadow-xs ${
+                        className={`w-full sm:max-w-[85%] rounded-2xl px-4 py-3 text-xs shadow-xs ${
                           isMe
                             ? 'bg-slate-900 text-white'
                             : 'border border-slate-200 bg-white text-slate-900'
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold">{msg.senderName}</span>
-                          <span className="opacity-70 text-[10px] uppercase">
-                            ({msg.senderRole})
-                          </span>
+                        {/* En-tête expéditeur -> destinataire */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold">{msg.senderName}</span>
+                            <span className="opacity-70 text-[10px] uppercase">
+                              ({msg.senderRole})
+                            </span>
+                            {msg.recipientName && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  isMe
+                                    ? 'bg-blue-500/30 text-blue-200'
+                                    : 'bg-blue-50 text-blue-700'
+                                }`}
+                              >
+                                → {msg.recipientName}
+                              </span>
+                            )}
+                            {msg.serviceTag && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  isMe
+                                    ? 'bg-emerald-500/30 text-emerald-200'
+                                    : 'bg-emerald-50 text-emerald-700'
+                                }`}
+                              >
+                                #{ETS_SERVICES.find((s) => s.id === msg.serviceTag)?.label || msg.serviceTag}
+                              </span>
+                            )}
+                            {msg.groupName && (
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  isMe
+                                    ? 'bg-purple-500/30 text-purple-200'
+                                    : 'bg-purple-50 text-purple-700'
+                                }`}
+                              >
+                                👥 {msg.groupName}
+                              </span>
+                            )}
+                          </div>
+
+                          {msg.forwardedFromSenderName && (
+                            <span className="inline-flex items-center gap-1 text-[10px] italic opacity-75">
+                              <CornerUpRight className="h-3 w-3" />
+                              Transféré de {msg.forwardedFromSenderName}
+                            </span>
+                          )}
                         </div>
-                        <p className="whitespace-pre-line">{msg.content}</p>
+
+                        {/* Citation d'un message répondu */}
+                        {msg.replyToExcerpt && (
+                          <div
+                            className={`mb-2 rounded-xl border-l-4 px-3 py-1.5 text-[11px] ${
+                              isMe
+                                ? 'border-blue-400 bg-white/10 text-slate-200'
+                                : 'border-blue-600 bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            <p className="font-bold text-[10px]">
+                              En réponse à {msg.replyToSenderName || 'un message'} :
+                            </p>
+                            <p className="truncate italic opacity-90">
+                              « {msg.replyToExcerpt} »
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Contenu du message */}
+                        <p className="whitespace-pre-line leading-relaxed">{msg.content}</p>
+
                         {msg.attachmentName && (
-                          <div className="mt-1.5 inline-flex items-center gap-1 rounded-lg bg-white/10 px-2 py-1 text-[10px] font-semibold">
+                          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1 text-[10px] font-semibold border border-current/15">
                             <Paperclip className="h-3 w-3" />
                             <span>{msg.attachmentName}</span>
                           </div>
                         )}
-                        <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] opacity-70">
-                          <span>
-                            {new Date(msg.createdAt).toLocaleTimeString('fr-FR', {
-                              hour: '2-digit',
-                              minute: '2-digit',
+
+                        {/* Pastilles de réactions actives */}
+                        {reactionEntries.length > 0 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {reactionEntries.map(([emoji, uids]) => {
+                              const iReacted = user ? uids.includes(user.uid) : false;
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => handleToggleReaction(msg.id, emoji)}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold transition ${
+                                    iReacted
+                                      ? 'bg-blue-600 text-white ring-1 ring-blue-300'
+                                      : isMe
+                                        ? 'bg-white/15 text-white hover:bg-white/25'
+                                        : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  <span>{emoji}</span>
+                                  <span>{uids.length}</span>
+                                </button>
+                              );
                             })}
-                          </span>
-                          <CheckCheck className="h-3 w-3" />
-                          <span>{msg.readBy?.length || 1} lu(s)</span>
+                          </div>
+                        )}
+
+                        {/* Barre d'actions du message : Réagir, Répondre, Commenter, Partager, Copier */}
+                        <div
+                          className={`mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-[10px] ${
+                            isMe ? 'border-white/15' : 'border-slate-100'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center gap-1">
+                            {/* Bouton Réactions */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setOpenReactionPickerMsgId((cur) =>
+                                    cur === msg.id ? null : msg.id
+                                  )
+                                }
+                                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 font-semibold transition ${
+                                  isMe
+                                    ? 'hover:bg-white/15 text-slate-200'
+                                    : 'hover:bg-slate-100 text-slate-600'
+                                }`}
+                                title="Réagir avec un émoji"
+                              >
+                                <SmilePlus className="h-3.5 w-3.5" />
+                                <span>Réagir</span>
+                              </button>
+
+                              {openReactionPickerMsgId === msg.id && (
+                                <div className="absolute bottom-full left-0 z-20 mb-1 flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                                  {QUICK_REACTIONS.map((emoji) => (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      onClick={() => handleToggleReaction(msg.id, emoji)}
+                                      className=" rounded-xl p-1.5 text-sm hover:bg-slate-100 transition transform hover:scale-110"
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Bouton Répondre */}
+                            <button
+                              type="button"
+                              onClick={() => handleReplyToMessage(msg)}
+                              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 font-semibold transition ${
+                                isMe
+                                  ? 'hover:bg-white/15 text-slate-200'
+                                  : 'hover:bg-slate-100 text-slate-600'
+                              }`}
+                              title="Répondre à ce message"
+                            >
+                              <Reply className="h-3.5 w-3.5" />
+                              <span>Répondre</span>
+                            </button>
+
+                            {/* Bouton Commentaires */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setOpenCommentsMsgIds((prev) => ({
+                                  ...prev,
+                                  [msg.id]: !prev[msg.id],
+                                }))
+                              }
+                              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 font-semibold transition ${
+                                isMe
+                                  ? 'hover:bg-white/15 text-slate-200'
+                                  : 'hover:bg-slate-100 text-slate-600'
+                              }`}
+                              title="Afficher ou ajouter un commentaire"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              <span>
+                                Commenter
+                                {commentsList.length > 0 ? ` (${commentsList.length})` : ''}
+                              </span>
+                            </button>
+
+                            {/* Bouton Partager / Transférer */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSharingMessage(msg);
+                                setShareNote('');
+                              }}
+                              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 font-semibold transition ${
+                                isMe
+                                  ? 'hover:bg-white/15 text-slate-200'
+                                  : 'hover:bg-slate-100 text-slate-600'
+                              }`}
+                              title="Partager ou transférer à un utilisateur, service ou groupe"
+                            >
+                              <Share2 className="h-3.5 w-3.5" />
+                              <span>Partager</span>
+                            </button>
+
+                            {/* Bouton Copier */}
+                            <button
+                              type="button"
+                              onClick={() => handleCopyMessage(msg)}
+                              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 font-semibold transition ${
+                                isMe
+                                  ? 'hover:bg-white/15 text-slate-200'
+                                  : 'hover:bg-slate-100 text-slate-600'
+                              }`}
+                              title="Copier le texte"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 opacity-75">
+                            <span>
+                              {new Date(msg.createdAt).toLocaleTimeString('fr-FR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            <CheckCheck className="h-3 w-3" />
+                            <span>{msg.readBy?.length || 1} lu(s)</span>
+                          </div>
                         </div>
+
+                        {/* Section Commentaires sous le message */}
+                        {(isCommentsOpen || commentsList.length > 0) && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-2.5 space-y-2 ${
+                              isMe
+                                ? 'bg-white/10 text-white'
+                                : 'bg-slate-50 border border-slate-200/80 text-slate-800'
+                            }`}
+                          >
+                            {commentsList.length > 0 && (
+                              <div className="space-y-1.5">
+                                {commentsList.map((cmt) => (
+                                  <div
+                                    key={cmt.id}
+                                    className={`rounded-lg px-2.5 py-1.5 text-[11px] ${
+                                      isMe ? 'bg-slate-950/40' : 'bg-white border border-slate-200/60'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-bold">
+                                        {cmt.authorName}{' '}
+                                        <span className="opacity-65 text-[9px] uppercase">
+                                          ({cmt.authorRole})
+                                        </span>
+                                      </span>
+                                      <span className="text-[9px] opacity-65">
+                                        {new Date(cmt.createdAt).toLocaleTimeString('fr-FR', {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5">{cmt.content}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {isCommentsOpen && (
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <input
+                                  type="text"
+                                  value={commentInputs[msg.id] || ''}
+                                  onChange={(e) =>
+                                    setCommentInputs((prev) => ({
+                                      ...prev,
+                                      [msg.id]: e.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      void handleAddComment(msg.id);
+                                    }
+                                  }}
+                                  placeholder="Ajouter un commentaire sur ce message..."
+                                  className="flex-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-900 outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAddComment(msg.id)}
+                                  className="rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-blue-500"
+                                >
+                                  Commenter
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -464,10 +1348,33 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
               <div ref={chatEndRef} />
             </div>
 
+            {/* Zone de rédaction avec bannière de réponse et rappel du destinataire */}
             <form
               onSubmit={handleSendMessage}
               className="border-t border-slate-200 bg-white p-3 rounded-b-2xl space-y-2"
             >
+              {/* Bannière de réponse active */}
+              {replyingTo && (
+                <div className="flex items-center justify-between rounded-xl border-l-4 border-blue-600 bg-blue-50/80 px-3 py-2 text-xs text-blue-950">
+                  <div className="min-w-0">
+                    <p className="font-bold text-[11px] flex items-center gap-1">
+                      <Reply className="h-3 w-3 text-blue-600" />
+                      Réponse à {replyingTo.senderName}
+                    </p>
+                    <p className="truncate text-[11px] text-blue-800 italic">
+                      « {replyingTo.content} »
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    className="ml-2 rounded-lg p-1 text-blue-700 hover:bg-blue-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+
               {attachmentName && (
                 <div className="flex items-center justify-between rounded-lg bg-blue-50 px-3 py-1 text-xs text-blue-800">
                   <span>Pièce jointe : {attachmentName}</span>
@@ -476,8 +1383,12 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
                   </button>
                 </div>
               )}
+
               <div className="flex items-center gap-2">
-                <label className="cursor-pointer rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+                <label
+                  className="cursor-pointer rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                  title="Joindre un document ou une image"
+                >
                   <Paperclip className="h-4 w-4" />
                   <input
                     type="file"
@@ -489,15 +1400,16 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
                   />
                 </label>
                 <input
+                  ref={messageInputRef}
                   type="text"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Écrire un message opérationnel..."
+                  placeholder={`Écrire à : ${currentChannelName}...`}
                   className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none"
                 />
                 <button
                   type="submit"
-                  disabled={Sending || !messageText.trim()}
+                  disabled={sending || !messageText.trim()}
                   className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
                 >
                   <Send className="h-3.5 w-3.5" />
@@ -506,6 +1418,166 @@ export default function ChatModule({ onClose }: ChatModuleProps) {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Fenêtre modale de Partage / Transfert d'un message */}
+      {sharingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <form
+            onSubmit={handleConfirmForwardMessage}
+            className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Share2 className="h-4 w-4 text-blue-600" />
+                  Partager / Transférer ce message
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Choisissez l'utilisateur, le service ou le groupe destinataire
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSharingMessage(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-3 text-xs border border-slate-200">
+              <p className="font-bold text-slate-700 mb-0.5">
+                Message de {sharingMessage.senderName} :
+              </p>
+              <p className="text-slate-600 line-clamp-3 italic">
+                « {sharingMessage.content} »
+              </p>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Type de destinataire :
+                </label>
+                <select
+                  value={shareTargetType}
+                  onChange={(e) =>
+                    setShareTargetType(
+                      e.target.value as LocalChatMessage['channelType']
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold"
+                >
+                  <option value="prive">Utilisateur Ets AMANI (Message privé)</option>
+                  <option value="service">Service en particulier</option>
+                  <option value="groupe">Chat en Groupe</option>
+                  <option value="agence">Canal de mon Agence</option>
+                  <option value="global">Canal Général Réseau Ets AMANI</option>
+                </select>
+              </div>
+
+              {shareTargetType === 'prive' && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Choisir l'utilisateur :
+                  </label>
+                  <select
+                    required
+                    value={shareRecipientId}
+                    onChange={(e) => setShareRecipientId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold"
+                  >
+                    <option value="">-- Sélectionner un utilisateur --</option>
+                    {usersList.map((u) => (
+                      <option key={u.uid} value={u.uid}>
+                        {u.displayName} ({u.function || u.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {shareTargetType === 'service' && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Choisir le service :
+                  </label>
+                  <select
+                    value={shareServiceTag}
+                    onChange={(e) => setShareServiceTag(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold"
+                  >
+                    {ETS_SERVICES.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {shareTargetType === 'groupe' && (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Choisir le groupe :
+                  </label>
+                  <select
+                    value={shareGroupId}
+                    onChange={(e) => setShareGroupId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold"
+                  >
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Note d'accompagnement (optionnelle) :
+                </label>
+                <input
+                  type="text"
+                  value={shareNote}
+                  onChange={(e) => setShareNote(e.target.value)}
+                  placeholder="Ex: Pour suivi prioritaire à votre niveau..."
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => void handleCopyMessage(sharingMessage)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copier texte
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSharingMessage(null)}
+                  className="rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-600"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  Transférer
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
 

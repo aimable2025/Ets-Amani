@@ -158,10 +158,10 @@ function readGapHistory(): GapHistoryEntry[] {
   }
 }
 
-function formatMoney(amount: number, currency: BilletageCurrency): string {
+function formatMoney(amount: number, _currency: BilletageCurrency): string {
   return new Intl.NumberFormat('fr-FR', {
-    minimumFractionDigits: currency === 'USD' ? 2 : 0,
-    maximumFractionDigits: currency === 'USD' ? 2 : 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(amount);
 }
 
@@ -811,7 +811,7 @@ export default function BilletageModule({ onClose }: BilletageModuleProps) {
                   setExpectedAmount(event.target.value);
                   setError(null);
                 }}
-                placeholder={currency === 'USD' ? 'Ex. 1250.00' : 'Ex. 250000'}
+                placeholder={currency === 'USD' ? 'Ex. 1250' : 'Ex. 250000'}
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-semibold text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
               />
             </div>

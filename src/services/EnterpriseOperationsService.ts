@@ -1,5 +1,6 @@
 import {
   db,
+  type ChatMessageComment,
   type LocalBroadcast,
   type LocalChatMessage,
   type LocalDebt,
@@ -23,7 +24,7 @@ export async function getAuthorizedChatMessages(
   const visible = all.filter((msg) => {
     if (msg.channelType === 'global') return true;
     if (msg.channelType === 'agence') {
-      return isGlobal || (user.agencyId && msg.agencyId === user.agencyId);
+      return isGlobal || !msg.agencyId || (user.agencyId && msg.agencyId === user.agencyId);
     }
     if (msg.channelType === 'prive') {
       return (
@@ -32,7 +33,17 @@ export async function getAuthorizedChatMessages(
         isGlobal
       );
     }
-    if (msg.channelType === 'service' || msg.channelType === 'groupe') {
+    if (msg.channelType === 'groupe') {
+      if (msg.groupParticipantIds && msg.groupParticipantIds.length > 0) {
+        return (
+          isGlobal ||
+          msg.senderId === user.uid ||
+          msg.groupParticipantIds.includes(user.uid)
+        );
+      }
+      return isGlobal || !msg.agencyId || msg.agencyId === user.agencyId;
+    }
+    if (msg.channelType === 'service') {
       return isGlobal || !msg.agencyId || msg.agencyId === user.agencyId;
     }
     return true;
@@ -49,6 +60,13 @@ export interface SendChatMessageInput {
   recipientId?: string | null;
   recipientName?: string | null;
   serviceTag?: string | null;
+  groupName?: string | null;
+  groupParticipantIds?: string[];
+  groupParticipantNames?: string[];
+  replyToMessageId?: string | null;
+  replyToSenderName?: string | null;
+  replyToExcerpt?: string | null;
+  forwardedFromSenderName?: string | null;
   content: string;
   attachmentType?: 'none' | 'image' | 'document';
   attachmentName?: string | null;
@@ -67,13 +85,22 @@ export async function sendChatMessage(
     channelType: input.channelType,
     channelId: input.channelId,
     channelName: input.channelName,
-    agencyId: input.agencyId ?? user.agencyId ?? null,
+    agencyId: input.agencyId !== undefined ? input.agencyId : user.agencyId ?? null,
     senderId: user.uid,
     senderName: user.displayName || user.email || 'Utilisateur',
     senderRole: user.role,
     recipientId: input.recipientId ?? null,
     recipientName: input.recipientName ?? null,
     serviceTag: input.serviceTag ?? null,
+    groupName: input.groupName ?? null,
+    groupParticipantIds: input.groupParticipantIds || [],
+    groupParticipantNames: input.groupParticipantNames || [],
+    replyToMessageId: input.replyToMessageId ?? null,
+    replyToSenderName: input.replyToSenderName ?? null,
+    replyToExcerpt: input.replyToExcerpt ?? null,
+    forwardedFromSenderName: input.forwardedFromSenderName ?? null,
+    reactions: {},
+    comments: [],
     content: input.content.trim(),
     attachmentType: input.attachmentType || 'none',
     attachmentName: input.attachmentName || null,
@@ -97,6 +124,87 @@ export async function sendChatMessage(
   });
 
   return msg;
+}
+
+export async function toggleChatMessageReaction(
+  messageId: string,
+  emoji: string,
+  userId: string
+): Promise<void> {
+  const existing = await db.chatMessages.get(messageId);
+  if (!existing) return;
+
+  const currentReactions: Record<string, string[]> = {
+    ...(existing.reactions || {}),
+  };
+  const list = currentReactions[emoji] || [];
+  if (list.includes(userId)) {
+    const nextList = list.filter((id) => id !== userId);
+    if (nextList.length === 0) {
+      delete currentReactions[emoji];
+    } else {
+      currentReactions[emoji] = nextList;
+    }
+  } else {
+    currentReactions[emoji] = [...list, userId];
+  }
+
+  const now = Date.now();
+  await db.chatMessages.update(messageId, {
+    reactions: currentReactions,
+    syncStatus: 'pending',
+    updatedAt: now,
+  });
+
+  await db.syncQueue.add({
+    entity: 'chatMessage',
+    entityId: messageId,
+    operation: 'update',
+    attempts: 0,
+    lastError: null,
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export async function addChatMessageComment(
+  messageId: string,
+  content: string,
+  user: AppUser
+): Promise<void> {
+  const trimmed = content.trim();
+  if (!trimmed) return;
+  const existing = await db.chatMessages.get(messageId);
+  if (!existing) return;
+
+  const now = Date.now();
+  const newComment: ChatMessageComment = {
+    id: `cmt-${now}-${Math.random().toString(36).substring(2, 7)}`,
+    authorId: user.uid,
+    authorName: user.displayName || user.email || 'Utilisateur',
+    authorRole: user.role,
+    content: trimmed,
+    createdAt: now,
+  };
+
+  const updatedComments = [...(existing.comments || []), newComment];
+  await db.chatMessages.update(messageId, {
+    comments: updatedComments,
+    syncStatus: 'pending',
+    updatedAt: now,
+  });
+
+  await db.syncQueue.add({
+    entity: 'chatMessage',
+    entityId: messageId,
+    operation: 'update',
+    attempts: 0,
+    lastError: null,
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 export async function markChatMessageAsRead(

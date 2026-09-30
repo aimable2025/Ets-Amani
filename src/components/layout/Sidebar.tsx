@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeftRight,
   BarChart3,
   Bell,
   Building2,
@@ -8,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   MessageSquare,
+  Scale,
   Settings,
   ShieldCheck,
   Users,
@@ -85,7 +87,8 @@ export default function Sidebar({
       ? [
           { id: 'salaries', label: 'Salaires & Avances', icon: Coins, badge: 'Paie DG' },
           { id: 'reports', label: 'Rapports & Exports', icon: FileText, badge: 'PDF/XLS' },
-          { id: 'accounting', label: 'Transferts & Dettes', icon: Calculator },
+          { id: 'transfers', label: 'Transferts Inter-Agences', icon: ArrowLeftRight },
+          { id: 'debts', label: 'Suivi des Dettes', icon: Scale },
           { id: 'commissions', label: 'Missions Réseau', icon: BarChart3 },
           { id: 'chat', label: 'Chat Interne & IA', icon: MessageSquare },
         ]
@@ -93,7 +96,8 @@ export default function Sidebar({
         ? [
             { id: 'salaries', label: 'Salaires & Guichet Payeur', icon: Coins, badge: 'Paie' },
             { id: 'reports', label: "Rapports d'Agence", icon: FileText, badge: 'PDF/XLS' },
-            { id: 'accounting', label: 'Transferts & Dettes', icon: Calculator },
+            { id: 'transfers', label: 'Transferts Inter-Agences', icon: ArrowLeftRight },
+            { id: 'debts', label: 'Suivi des Dettes', icon: Scale },
             { id: 'chat', label: 'Chat Interne & IA', icon: MessageSquare },
           ]
         : role === 'administrateur_systeme'
@@ -103,6 +107,8 @@ export default function Sidebar({
           : role === 'agent'
             ? [
                 { id: 'salaries', label: 'Mon Salaire & Avances', icon: Coins, badge: 'Paie' },
+                { id: 'transfers', label: 'Transferts Inter-Agences', icon: ArrowLeftRight },
+                { id: 'debts', label: 'Suivi des Dettes', icon: Scale },
                 { id: 'chat', label: 'Chat Interne & Annonces', icon: MessageSquare },
               ]
             : [];

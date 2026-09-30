@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeftRight,
   BarChart3,
   Bell,
   Building2,
@@ -88,9 +89,18 @@ export const DG_MODULES: DgModuleItem[] = [
     isAvailable: (f) => f?.reportsManage ?? true,
   },
   {
-    id: 'inter-agency-debts',
-    title: 'Transferts Inter-Agences & Dettes',
-    description: 'Mouvements de fonds inter-succursales, ravitaillements et suivi des créances.',
+    id: 'inter-agency-transfers',
+    title: 'Transferts Inter-Agences',
+    description: 'Mouvements de fonds inter-succursales (argent physique, virtuel et ravitaillements).',
+    icon: ArrowLeftRight,
+    category: 'finance',
+    variant: 'primary',
+    isAvailable: (f) => f?.transactionsManage ?? true,
+  },
+  {
+    id: 'debts-management',
+    title: 'Suivi des Dettes & Créances',
+    description: 'Gestion des dettes clients, agents et entreprise, échéances et remboursements.',
     icon: Scale,
     category: 'finance',
     variant: 'warning',

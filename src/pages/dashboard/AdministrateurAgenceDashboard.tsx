@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeftRight,
   Building2,
   CalendarCheck2,
   CheckCircle2,
@@ -48,7 +49,8 @@ type ModuleId =
   | 'connectivity'
   | 'reports'
   | 'chat'
-  | 'transfers_debts'
+  | 'transfers'
+  | 'debts'
   | 'salaries';
 
 export default function AdministrateurAgenceDashboard() {
@@ -131,7 +133,9 @@ export default function AdministrateurAgenceDashboard() {
       billetage: 'billetage',
       members: 'agents',
       reports: 'reports',
-      accounting: 'transfers_debts',
+      transfers: 'transfers',
+      debts: 'debts',
+      accounting: 'transfers',
       salaries: 'salaries',
       chat: 'chat',
       regulations: 'registrations',
@@ -213,7 +217,7 @@ export default function AdministrateurAgenceDashboard() {
               Caisse Locale
             </span>
             <p className="mt-2 text-2xl font-black text-slate-900">
-              ${totalUsd.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${totalUsd.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </p>
             <p className="mt-1 text-xs text-emerald-600 font-semibold">
               {totalCdf.toLocaleString('fr-FR')} CDF comptabilisés
@@ -266,8 +270,17 @@ export default function AdministrateurAgenceDashboard() {
             {activeModule === 'chat' && (
               <ChatModule onClose={() => setActiveModule(null)} />
             )}
-            {activeModule === 'transfers_debts' && (
-              <TreasuryTransfersDebtsModule onClose={() => setActiveModule(null)} />
+            {activeModule === 'transfers' && (
+              <TreasuryTransfersDebtsModule
+                mode="transfers"
+                onClose={() => setActiveModule(null)}
+              />
+            )}
+            {activeModule === 'debts' && (
+              <TreasuryTransfersDebtsModule
+                mode="debts"
+                onClose={() => setActiveModule(null)}
+              />
             )}
             {activeModule === 'salaries' && (
               <SalaryModule mode="agent" onClose={() => setActiveModule(null)} />
@@ -308,11 +321,18 @@ export default function AdministrateurAgenceDashboard() {
             onClick={() => setActiveModule('reports')}
           />
           <DashboardModuleCard
-            title="Transferts Inter-Agences & Dettes"
-            description="Ravitaillements inter-agences, suivi des dettes et remboursements locaux."
+            title="Transferts Inter-Agences"
+            description="Mouvements de fonds inter-succursales (argent physique, virtuel et ravitaillements)."
+            icon={ArrowLeftRight}
+            variant="primary"
+            onClick={() => setActiveModule('transfers')}
+          />
+          <DashboardModuleCard
+            title="Suivi des Dettes & Créances"
+            description="Enregistrement des dettes clients, agents et entreprise, et suivi des remboursements."
             icon={Scale}
             variant="warning"
-            onClick={() => setActiveModule('transfers_debts')}
+            onClick={() => setActiveModule('debts')}
           />
           <DashboardModuleCard
             title="Chat Interne, Annonces & IA"
