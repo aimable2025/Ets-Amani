@@ -43,7 +43,7 @@ import {
   updateManagedUserStatus,
   type ManagedUser,
 } from '../../services/SystemUserService';
-import type { AccountStatus, UserCategory, UserRole } from '../../types/auth';
+import type { AccountStatus, UserCategory, UserFunction, UserRole } from '../../types/auth';
 
 type ActiveView =
   | 'overview'
@@ -83,6 +83,8 @@ export default function AdministrateurSystemeDashboard() {
   const [newUserPhone, setNewUserPhone] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('administrateur_agence');
   const [newUserCategory, setNewUserCategory] = useState<UserCategory>('administrateur_agence');
+  const [newUserFunction, setNewUserFunction] = useState<UserFunction>('guichetier');
+  const [newUserRoleOption, setNewUserRoleOption] = useState<string>('administrateur_agence');
   const [newUserAgencyId, setNewUserAgencyId] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
@@ -185,7 +187,11 @@ export default function AdministrateurSystemeDashboard() {
           phone: newUserPhone.trim() || undefined,
           role: newUserRole,
           category: newUserCategory,
-          agencyId: newUserAgencyId.trim() || null,
+          function: newUserRole === 'agent' ? newUserFunction : undefined,
+          agencyId:
+            newUserRole === 'directeur_general'
+              ? null
+              : newUserAgencyId.trim() || null,
           password: newUserPassword,
         },
         { uid: user.uid, name: user.displayName, role: user.role }
@@ -194,6 +200,7 @@ export default function AdministrateurSystemeDashboard() {
       setNewUserName('');
       setNewUserEmail('');
       setNewUserPhone('');
+      setNewUserPassword('');
       setFeedback('Nouvel utilisateur créé avec succès.');
       setTimeout(() => setFeedback(null), 3500);
       await fetchUsers();
@@ -610,6 +617,11 @@ export default function AdministrateurSystemeDashboard() {
                         <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 font-bold uppercase text-slate-700">
                           {u.role}
                         </span>
+                        {u.function && (
+                          <span className="ml-1 inline-block rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-700">
+                            {u.function.replace(/_/g, ' ')}
+                          </span>
+                        )}
                         {u.agencyId && (
                           <span className="ml-1 text-[11px] text-slate-500">({u.agencyId})</span>
                         )}
@@ -781,8 +793,11 @@ export default function AdministrateurSystemeDashboard() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
             <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
               <h3 className="text-lg font-bold text-slate-900">
-                Créer un Compte Administratif ou Agent
+                Créer un Utilisateur
               </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Attribution de tous les rôles métier Ets AMANI (à l'exception de l'Administrateur Système).
+              </p>
               <form onSubmit={handleCreateUser} className="mt-4 space-y-3 text-xs">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
@@ -797,69 +812,117 @@ export default function AdministrateurSystemeDashboard() {
                     className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
                   />
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={newUserEmail}
-                    onChange={(e) => setNewUserEmail(e.target.value)}
-                    placeholder="agent@ets-amani.com"
-                    className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
-                  />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Email *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      placeholder="utilisateur@ets-amani.com"
+                      className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Téléphone
+                    </label>
+                    <input
+                      type="tel"
+                      value={newUserPhone}
+                      onChange={(e) => setNewUserPhone(e.target.value)}
+                      placeholder="+243 970 000 000"
+                      className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Rôle
+                    Rôle *
                   </label>
                   <select
-                    value={newUserRole}
+                    value={newUserRoleOption}
                     onChange={(e) => {
-                      const r = e.target.value as UserRole;
-                      setNewUserRole(r);
-                      if (r === 'administrateur_agence') setNewUserCategory('administrateur_agence');
-                      else if (r === 'agent') setNewUserCategory('agent');
-                      else if (r === 'client') setNewUserCategory('client');
-                      else if (r === 'abonne') setNewUserCategory('abonne');
-                      else setNewUserCategory('direction');
+                      const val = e.target.value;
+                      setNewUserRoleOption(val);
+                      if (val === 'directeur_general') {
+                        setNewUserRole('directeur_general');
+                        setNewUserCategory('direction');
+                      } else if (val === 'administrateur_agence') {
+                        setNewUserRole('administrateur_agence');
+                        setNewUserCategory('administrateur_agence');
+                      } else if (val.startsWith('agent:')) {
+                        const fn = val.replace('agent:', '') as UserFunction;
+                        setNewUserRole('agent');
+                        setNewUserCategory('agent');
+                        setNewUserFunction(fn);
+                      } else if (val === 'agent') {
+                        setNewUserRole('agent');
+                        setNewUserCategory('agent');
+                        setNewUserFunction('guichetier');
+                      } else if (val === 'abonne') {
+                        setNewUserRole('abonne');
+                        setNewUserCategory('abonne');
+                      } else if (val === 'client') {
+                        setNewUserRole('client');
+                        setNewUserCategory('client');
+                      }
                     }}
                     className="w-full rounded-xl border border-slate-200 p-2.5 outline-none font-bold"
                   >
-                    <option value="administrateur_agence">Administrateur d'Agence</option>
-                    <option value="agent">Agent de Guichet / Terrain</option>
-                    <option value="client">Client</option>
-                    <option value="abonne">Abonné</option>
+                    <optgroup label="Direction & Gouvernance">
+                      <option value="directeur_general">Directeur Général (DG)</option>
+                      <option value="administrateur_agence">Administrateur d'Agence</option>
+                    </optgroup>
+                    <optgroup label="Agents Opérationnels & Services">
+                      <option value="agent:guichetier">Agent — Guichetier / Caissier</option>
+                      <option value="agent:comptable">Agent — Comptable</option>
+                      <option value="agent:agent_change">Agent — Agent de Change (USD / CDF)</option>
+                      <option value="agent:agent_virtuel">Agent — Agent Virtuel</option>
+                      <option value="agent:agent_vodae">Agent — Agent Vodacom / M-Pesa</option>
+                      <option value="agent:agent_operateur_mobile">Agent — Agent Opérateur Mobile</option>
+                      <option value="agent:agent_terrain">Agent — Agent de Terrain</option>
+                      <option value="agent:chauffeur">Agent — Chauffeur</option>
+                      <option value="agent:cleaner">Agent — Agent d'Entretien (Cleaner)</option>
+                    </optgroup>
+                    <optgroup label="Membres Externes">
+                      <option value="abonne">Abonné Privilégié</option>
+                      <option value="client">Client Certifié</option>
+                    </optgroup>
                   </select>
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Agence de rattachement
-                  </label>
-                  {agencies.length > 0 ? (
-                    <select
-                      value={newUserAgencyId}
-                      onChange={(e) => setNewUserAgencyId(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
-                    >
-                      <option value="">Aucune agence (Global)</option>
-                      {agencies.map((ag) => (
-                        <option key={ag.id} value={ag.id}>
-                          {ag.name} ({ag.id})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={newUserAgencyId}
-                      onChange={(e) => setNewUserAgencyId(e.target.value)}
-                      placeholder="Identifiant agence (facultatif)"
-                      className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
-                    />
-                  )}
-                </div>
+                {newUserRole !== 'directeur_general' && (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Agence de rattachement
+                    </label>
+                    {agencies.length > 0 ? (
+                      <select
+                        value={newUserAgencyId}
+                        onChange={(e) => setNewUserAgencyId(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
+                      >
+                        <option value="">Aucune agence (Global)</option>
+                        {agencies.map((ag) => (
+                          <option key={ag.id} value={ag.id}>
+                            {ag.name} ({ag.id})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={newUserAgencyId}
+                        onChange={(e) => setNewUserAgencyId(e.target.value)}
+                        placeholder="Identifiant agence (facultatif)"
+                        className="w-full rounded-xl border border-slate-200 p-2.5 outline-none"
+                      />
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
                     Mot de passe initial *

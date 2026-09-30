@@ -331,6 +331,24 @@ export async function createAdministrativeUser(
   },
   actor: { uid: string; name: string; role: string },
 ): Promise<ManagedUser> {
+  if (params.role === 'administrateur_systeme') {
+    throw new Error(
+      "Sécurité RBAC : le rôle d'Administrateur Système ne peut pas être attribué via la création de compte."
+    );
+  }
+
+  if (params.role === 'directeur_general') {
+    return appointDirectorGeneral(
+      {
+        displayName: params.displayName,
+        email: params.email,
+        phone: params.phone,
+        password: params.password,
+      },
+      actor
+    );
+  }
+
   let newUid = '';
 
   if (isFirebaseConfigured && params.password && params.email) {
@@ -357,6 +375,9 @@ export async function createAdministrativeUser(
         ? AGENT_CANONICAL_PERMISSIONS
         : [];
 
+  const resolvedFunction: UserFunction | undefined =
+    params.role === 'agent' ? params.function || 'guichetier' : undefined;
+
   const newUser: ManagedUser = {
     uid: newUid,
     displayName: params.displayName.trim(),
@@ -364,7 +385,7 @@ export async function createAdministrativeUser(
     phone: params.phone?.trim() || null,
     category: params.category,
     role: params.role,
-    function: params.function,
+    ...(resolvedFunction ? { function: resolvedFunction } : {}),
     agencyId: params.agencyId || null,
     status: 'active',
     isApproved: true,
