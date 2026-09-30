@@ -1,7 +1,6 @@
 import {
   Bell,
   ChevronDown,
-  Menu,
   RefreshCw,
   Wifi,
   WifiOff
@@ -39,8 +38,6 @@ export default function Header({
   pendingSyncCount = 0,
   isSyncingNow = false,
   notificationCount = 0,
-  hideMenuButtonOnDesktop = false,
-  onMenuClick,
   onSyncNowClick,
   onNotificationsClick,
   onProfileClick
@@ -52,18 +49,6 @@ export default function Header({
   return (
     <header className="no-print sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-        <button
-          type="button"
-          onClick={onMenuClick}
-          aria-label="Ouvrir le menu"
-          className={[
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950',
-            hideMenuButtonOnDesktop ? 'lg:hidden' : '',
-          ].join(' ')}
-        >
-          <Menu size={20} />
-        </button>
-
         <img
           src="/logo.png"
           alt="Logo Ets AMANI"
